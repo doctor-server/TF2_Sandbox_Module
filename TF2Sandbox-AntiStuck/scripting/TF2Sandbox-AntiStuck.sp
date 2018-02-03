@@ -37,7 +37,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		{
 			float iPosition[3];
 			GetClientAbsOrigin(client, iPosition);
-			iPosition[2] += 20.0;
+			iPosition[2] += 5.0;
 			TeleportEntity(client, iPosition, NULL_VECTOR, NULL_VECTOR);
 		}
 	}
