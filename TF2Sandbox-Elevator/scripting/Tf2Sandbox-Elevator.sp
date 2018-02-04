@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "1.5"
+#define PLUGIN_VERSION "1.6"
 
 #include <sourcemod>
 #include <sdktools>
@@ -250,6 +250,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				
 				if (g_fElevatorLowest[client] >= fOrigin[2])
 				{
+					cSoundPath = "items/cart_rolling_stop.wav";			
+					PrecacheSound(cSoundPath);
+					EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
 					g_iElevatorAutoAction[client] = 0;
 					CreateTimer(10.0, Timer_ElevatorAction, client);
 				}
@@ -266,12 +269,15 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				
 				if (g_fElevatorHighest[client] <= fOrigin[2])
 				{
+					cSoundPath = "items/cart_rolling_stop.wav";			
+					PrecacheSound(cSoundPath);
+					EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
 					g_iElevatorAutoAction[client] = 0;
 					CreateTimer(10.0, Timer_ElevatorAction, client);
 				}
 			}
 			
-			PrintCenterText(client, "Value: %i", g_iElevatorAutoAction[client]);
+			//PrintCenterText(client, "Value: %i", g_iElevatorAutoAction[client]);
 		}
 		else if(g_iElevatorAction[client] == 1 && g_fElevatorHighest[client] >= fOrigin[2])
 		{
@@ -302,6 +308,14 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);			
 			g_iElevatorAction[client] = -1;
 		}
+	}
+	
+	if (IsValidClient(client) && IsPlayerAlive(client) && GetEntityMoveType(client) != MOVETYPE_NOCLIP && IsPlayerStuckInEnt(client))
+	{
+		float iPosition[3];
+		GetClientAbsOrigin(client, iPosition);
+		iPosition[2] += 5.0;
+		TeleportEntity(client, iPosition, NULL_VECTOR, NULL_VECTOR);
 	}
 }
 
@@ -363,7 +377,6 @@ int BuildElevator(int iBuilder, float fOrigin[3])
 	{
 		SetEntProp(iElevatorBody, Prop_Send, "m_nSolidType", 6);
 		SetEntProp(iElevatorBody, Prop_Data, "m_nSolidType", 6);
-		//Build_RegisterEntityOwner(iElevatorBody, iBuilder);
 		
 		if (!IsModelPrecached(szModel))
 			PrecacheModel(szModel);
@@ -380,7 +393,7 @@ int BuildElevator(int iBuilder, float fOrigin[3])
 	{
 		SetEntProp(iElevator, Prop_Send, "m_nSolidType", 6);
 		SetEntProp(iElevator, Prop_Data, "m_nSolidType", 6);
-		SetEntPropFloat(iElevator, Prop_Send, "m_flModelScale", 0.445);  
+		SetEntPropFloat(iElevator, Prop_Send, "m_flModelScale", 0.43);  
 		Build_RegisterEntityOwner(iElevator, iBuilder);
 		
 		if (!IsModelPrecached(szModel))
@@ -423,3 +436,34 @@ int GetClientMaxHoldEntities()
 	Handle iMax = FindConVar("sbox_maxpropsperplayer");
 	return GetConVarInt(iMax);
 } 
+
+stock bool IsPlayerStuckInEnt(int client)
+{
+	float vecMin[3], vecMax[3], vecOrigin[3];
+	
+	GetClientMins(client, vecMin);
+	GetClientMaxs(client, vecMax);
+	
+	GetClientAbsOrigin(client, vecOrigin);
+	
+	TR_TraceHullFilter(vecOrigin, vecOrigin, vecMin, vecMax, MASK_ALL, TraceRayHitOnlyEnt);
+	return TR_DidHit();
+}
+
+public bool TraceRayHitOnlyEnt(int entity, int contentsMask)
+{
+	if (IsValidEdict(entity) && GetEntProp(entity, Prop_Data, "m_CollisionGroup", 4) != 2)
+	{
+		char szClass[64];
+		GetEdictClassname(entity, szClass, sizeof(szClass));
+		if ((StrContains(szClass, "prop_dynamic") >= 0 || StrContains(szClass, "prop_physics") >= 0) && !StrEqual(szClass, "prop_ragdoll"))
+		{
+			char szModel[64];
+			GetEntPropString(entity, Prop_Data, "m_ModelName", szModel, sizeof(szModel));
+			//float fSize = GetEntPropFloat(i, Prop_Send, "m_flModelScale");
+			if(StrEqual(szModel, "models/props_trainyard/crane_platform001.mdl"))// && fSize == 0.43)
+				return true;
+		}
+	}
+	return false;
+}
