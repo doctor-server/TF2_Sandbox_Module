@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "1.6"
+#define PLUGIN_VERSION "2.0"
 
 #include <sourcemod>
 #include <sdktools>
@@ -21,7 +21,6 @@ public Plugin myinfo =
 	url = "http://steamcommunity.com/id/battlefieldduck/"
 };
 
-Handle g_hEnabled;
 int g_iElevatorIndex[MAXPLAYERS + 1];
 int g_iElevatorAction[MAXPLAYERS + 1];
 float g_fElevatorLowest[MAXPLAYERS + 1];
@@ -34,7 +33,6 @@ public void OnPluginStart()
 	CreateConVar("sm_tf2sb_elevator_ver", PLUGIN_VERSION, "", FCVAR_SPONLY | FCVAR_NOTIFY);
 	RegAdminCmd("sm_sbelevator", Command_ElevatorMenu, 0, "Build Elevator!");
 	RegAdminCmd("sm_sblift", Command_ElevatorMenu, 0, "Build Elevator!");
-	g_hEnabled = CreateConVar("sm_tf2sb_elevator", "1", "Enable the Elevator plugin?", 0, true, 0.0, true, 1.0);
 }
 
 public void OnMapStart()
@@ -96,9 +94,9 @@ public Action Command_ElevatorMenu(int client, int args) //HackMenu
 			Format(menuinfo, sizeof(menuinfo), " Spawn a Elevator", client);
 			menu.AddItem("BUILD", menuinfo);
 		}
-		Format(menuinfo, sizeof(menuinfo), " Set Current position as highest position", client);
+		Format(menuinfo, sizeof(menuinfo), " Set Current Elevator position as highest position", client);
 		menu.AddItem("SETHIGHEST", menuinfo, ITEMDRAW_DISABLED);
-		Format(menuinfo, sizeof(menuinfo), " Set Current position as lowest position", client);
+		Format(menuinfo, sizeof(menuinfo), " Set Current Elevator position as lowest position", client);
 		menu.AddItem("SETLOWEST", menuinfo, ITEMDRAW_DISABLED);
 		Format(menuinfo, sizeof(menuinfo), " Go Up", client);
 		menu.AddItem("UP", menuinfo, ITEMDRAW_DISABLED);
