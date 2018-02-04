@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "1.0"
+#define PLUGIN_VERSION "1.5"
 
 #include <sourcemod>
 #include <sdktools>
@@ -24,6 +24,10 @@ public Plugin myinfo =
 Handle g_hEnabled;
 int g_iElevatorIndex[MAXPLAYERS + 1];
 int g_iElevatorAction[MAXPLAYERS + 1];
+float g_fElevatorLowest[MAXPLAYERS + 1];
+float g_fElevatorHighest[MAXPLAYERS + 1];
+bool g_fElevatorAuto[MAXPLAYERS + 1];
+int g_iElevatorAutoAction[MAXPLAYERS + 1];
 
 public void OnPluginStart()
 {
@@ -45,12 +49,16 @@ public void OnClientPutInServer(int client)
 {
 	g_iElevatorIndex[client] = -1;
 	g_iElevatorAction[client] = -1;
+	g_fElevatorAuto[client] = false;
+	g_iElevatorAutoAction[client] = -1;
 }
 
 public void OnClientDisconnect(int client)
 {
 	g_iElevatorIndex[client] = -1;
 	g_iElevatorAction[client] = -1;
+	g_fElevatorAuto[client] = false;
+	g_iElevatorAutoAction[client] = -1;
 }
 
 public Action Command_ElevatorMenu(int client, int args) //HackMenu
@@ -58,26 +66,17 @@ public Action Command_ElevatorMenu(int client, int args) //HackMenu
 	char menuinfo[255];
 	Menu menu = new Menu(Handler_ElevatorMenu);
 	
-	Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Elevator Control Panel v%s\n ", PLUGIN_VERSION);
+	Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Elevator Control Panel v%s\n Highest: %f\n Lowest: %f", PLUGIN_VERSION, g_fElevatorHighest[client], g_fElevatorLowest[client]);
 	menu.SetTitle(menuinfo);
 	
-	if (IsValidEntity(g_iElevatorIndex[client]))
+	if (IsValidEntity(g_iElevatorIndex[client]) && !g_fElevatorAuto[client])
 	{
 		Format(menuinfo, sizeof(menuinfo), " Delete the Elevator", client);
 		menu.AddItem("DELETE", menuinfo);
-	}
-	else
-	{
-		Format(menuinfo, sizeof(menuinfo), " Spawn a Elevator", client);
-		menu.AddItem("BUILD", menuinfo);
-	}
-	
-	if (IsValidEntity(g_iElevatorIndex[client]))
-	{
-		Format(menuinfo, sizeof(menuinfo), " Set Current position as lowest position", client);
-		menu.AddItem("SETLOWEST", menuinfo);
 		Format(menuinfo, sizeof(menuinfo), " Set Current position as highest position", client);
 		menu.AddItem("SETHIGHEST", menuinfo);
+		Format(menuinfo, sizeof(menuinfo), " Set Current position as lowest position", client);
+		menu.AddItem("SETLOWEST", menuinfo);
 		Format(menuinfo, sizeof(menuinfo), " Go Up", client);
 		menu.AddItem("UP", menuinfo);
 		Format(menuinfo, sizeof(menuinfo), " Go Down", client);
@@ -87,10 +86,20 @@ public Action Command_ElevatorMenu(int client, int args) //HackMenu
 	}
 	else
 	{
-		Format(menuinfo, sizeof(menuinfo), " Set Current position as lowest position", client);
-		menu.AddItem("SETLOWEST", menuinfo, ITEMDRAW_DISABLED);
+		if(g_fElevatorAuto[client])
+		{
+			Format(menuinfo, sizeof(menuinfo), " Delete the Elevator", client);
+			menu.AddItem("BUILD", menuinfo, ITEMDRAW_DISABLED);
+		}
+		else 
+		{	
+			Format(menuinfo, sizeof(menuinfo), " Spawn a Elevator", client);
+			menu.AddItem("BUILD", menuinfo);
+		}
 		Format(menuinfo, sizeof(menuinfo), " Set Current position as highest position", client);
 		menu.AddItem("SETHIGHEST", menuinfo, ITEMDRAW_DISABLED);
+		Format(menuinfo, sizeof(menuinfo), " Set Current position as lowest position", client);
+		menu.AddItem("SETLOWEST", menuinfo, ITEMDRAW_DISABLED);
 		Format(menuinfo, sizeof(menuinfo), " Go Up", client);
 		menu.AddItem("UP", menuinfo, ITEMDRAW_DISABLED);
 		Format(menuinfo, sizeof(menuinfo), " Go Down", client);
@@ -98,6 +107,20 @@ public Action Command_ElevatorMenu(int client, int args) //HackMenu
 		Format(menuinfo, sizeof(menuinfo), " Stop", client);
 		menu.AddItem("STOP", menuinfo, ITEMDRAW_DISABLED);
 	}
+	
+	if(IsValidEntity(g_iElevatorIndex[client]))
+	{
+		Format(menuinfo, sizeof(menuinfo), " Automatic move", client);
+		if(g_fElevatorAuto[client])	Format(menuinfo, sizeof(menuinfo), " Automatic move: ON", client);
+		else Format(menuinfo, sizeof(menuinfo), " Automatic move: OFF", client);
+		menu.AddItem("AUTO", menuinfo);
+ 	}
+	else
+	{
+		Format(menuinfo, sizeof(menuinfo), " Automatic move: OFF", client);
+		menu.AddItem("AUTO", menuinfo, ITEMDRAW_DISABLED);
+	}
+	
 	menu.ExitBackButton = false;
 	menu.ExitButton = true;
 	menu.Display(client, -1);
@@ -116,7 +139,11 @@ public int Handler_ElevatorMenu(Menu menu, MenuAction action, int client, int se
 			float fAimPos[3];
 			if (GetAimOrigin(client, fAimPos))
 			{
-				g_iElevatorIndex[client] = BuildElevator(client, fAimPos);			
+				g_fElevatorHighest[client] = 999999.0;
+				g_fElevatorLowest[client] = -999999.0;
+				g_iElevatorAction[client] = 0;
+				g_fElevatorAuto[client] = false;
+				g_iElevatorIndex[client] = BuildElevator(client, fAimPos);
 			}
 		}
 		else if (StrEqual(info, "DELETE"))
@@ -125,6 +152,29 @@ public int Handler_ElevatorMenu(Menu menu, MenuAction action, int client, int se
 			{
 				AcceptEntityInput(g_iElevatorIndex[client], "kill");
 				g_iElevatorIndex[client] = -1;
+				g_iElevatorAction[client] = -1;
+				g_fElevatorHighest[client] = 999999.0;
+				g_fElevatorLowest[client] = -999999.0;
+				g_iElevatorAction[client] = 0;
+				g_fElevatorAuto[client] = false;
+			}
+		}
+		else if (StrEqual(info, "SETLOWEST"))
+		{
+			if (IsValidEntity(g_iElevatorIndex[client]))
+			{
+				float fOrigin[3];
+				GetEntPropVector(g_iElevatorIndex[client], Prop_Send, "m_vecOrigin", fOrigin);
+				g_fElevatorLowest[client] = fOrigin[2];
+			}
+		}
+		else if (StrEqual(info, "SETHIGHEST"))
+		{
+			if (IsValidEntity(g_iElevatorIndex[client]))
+			{
+				float fOrigin[3];
+				GetEntPropVector(g_iElevatorIndex[client], Prop_Send, "m_vecOrigin", fOrigin);
+				g_fElevatorHighest[client] = fOrigin[2];
 			}
 		}
 		else if (StrEqual(info, "UP"))
@@ -145,9 +195,23 @@ public int Handler_ElevatorMenu(Menu menu, MenuAction action, int client, int se
 		{
 			if (IsValidEntity(g_iElevatorIndex[client]))
 			{
-				g_iElevatorAction[client] = -1;
+				g_iElevatorAction[client] = 0;
 			}
-		}			
+		}
+		else if (StrEqual(info, "AUTO"))
+		{
+			if (IsValidEntity(g_iElevatorIndex[client]))
+			{
+				if(g_fElevatorAuto[client]) g_fElevatorAuto[client] = false;
+				else	
+				{
+					g_fElevatorAuto[client] = true;
+					g_iElevatorAutoAction[client] = 0;
+					CreateTimer(5.0, Timer_ElevatorAction, client);
+				}
+			}
+		}
+				
 		Command_ElevatorMenu(client, -1);
 	}
 	else if (action == MenuAction_Cancel)
@@ -169,26 +233,82 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	
 	if(IsValidEntity(g_iElevatorIndex[client]))
 	{
-		if(g_iElevatorAction[client] == 1)
+		float fOrigin[3];
+		GetEntPropVector(g_iElevatorIndex[client], Prop_Send, "m_vecOrigin", fOrigin);
+		
+		if(g_fElevatorAuto[client])
 		{
-			float fOrigin[3];
-			GetEntPropVector(g_iElevatorIndex[client], Prop_Send, "m_vecOrigin", fOrigin);
+			if((g_fElevatorHighest[client] <= fOrigin[2] && g_iElevatorAutoAction[client] == 1) || (g_fElevatorLowest[client] <= fOrigin[2]) && g_iElevatorAutoAction[client] == 3) //Down
+			{
+				g_iElevatorAutoAction[client] = 3;
+				fOrigin[2] -= 2.0;
+				TeleportEntity(g_iElevatorIndex[client], fOrigin, NULL_VECTOR, NULL_VECTOR);
+
+				char cSoundPath[64] = "items/cart_rolling_start.wav";			
+				PrecacheSound(cSoundPath);
+				EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
+				
+				if (g_fElevatorLowest[client] >= fOrigin[2])
+				{
+					g_iElevatorAutoAction[client] = 0;
+					CreateTimer(10.0, Timer_ElevatorAction, client);
+				}
+			}
+			else if((g_fElevatorLowest[client] >= fOrigin[2] && g_iElevatorAutoAction[client] == 1) || (g_fElevatorHighest[client] >= fOrigin[2]) && g_iElevatorAutoAction[client] == 2) //UP
+			{
+				g_iElevatorAutoAction[client] = 2;
+				fOrigin[2] += 2.0;
+				TeleportEntity(g_iElevatorIndex[client], fOrigin, NULL_VECTOR, NULL_VECTOR);
+
+				char cSoundPath[64] = "items/cart_rolling_start.wav";			
+				PrecacheSound(cSoundPath);
+				EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
+				
+				if (g_fElevatorHighest[client] <= fOrigin[2])
+				{
+					g_iElevatorAutoAction[client] = 0;
+					CreateTimer(10.0, Timer_ElevatorAction, client);
+				}
+			}
+			
+			PrintCenterText(client, "Value: %i", g_iElevatorAutoAction[client]);
+		}
+		else if(g_iElevatorAction[client] == 1 && g_fElevatorHighest[client] >= fOrigin[2])
+		{
 			fOrigin[2] += 2.0;
 			TeleportEntity(g_iElevatorIndex[client], fOrigin, NULL_VECTOR, NULL_VECTOR);
-			//TeleportEntity(g_iElevatorIndex[client], NULL_VECTOR, NULL_VECTOR, fOrigin);
+
+			char cSoundPath[64] = "items/cart_rolling_start.wav";			
+			PrecacheSound(cSoundPath);
+			EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
 		}
-		else if(g_iElevatorAction[client] == 2)
+		else if(g_iElevatorAction[client] == 2 && g_fElevatorLowest[client] <= fOrigin[2])
 		{
-			float fOrigin[3];
-			GetEntPropVector(g_iElevatorIndex[client], Prop_Send, "m_vecOrigin", fOrigin);
 			fOrigin[2] -= 2.0;
 			TeleportEntity(g_iElevatorIndex[client], fOrigin, NULL_VECTOR, NULL_VECTOR);
-			//TeleportEntity(g_iElevatorIndex[client], NULL_VECTOR, NULL_VECTOR, fOrigin);
+
+			char cSoundPath[64] = "items/cart_rolling_start.wav";			
+			PrecacheSound(cSoundPath);
+			EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
+		}
+		else if((g_iElevatorAction[client] == 0 || g_fElevatorHighest[client] >= fOrigin[2] || g_fElevatorLowest[client] <= fOrigin[2]) && g_iElevatorAction[client] != -1)
+		{
+			char cSoundPath[64] = "items/cart_rolling_stop.wav";			
+			PrecacheSound(cSoundPath);
+			EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
+			
+			cSoundPath = "misc/hologram_stop.wav";			
+			PrecacheSound(cSoundPath);
+			EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);			
+			g_iElevatorAction[client] = -1;
 		}
 	}
 }
 
-
+public Action Timer_ElevatorAction(Handle timer, int client)
+{
+	g_iElevatorAutoAction[client] = 1;
+}
 
 
 
@@ -260,7 +380,7 @@ int BuildElevator(int iBuilder, float fOrigin[3])
 	{
 		SetEntProp(iElevator, Prop_Send, "m_nSolidType", 6);
 		SetEntProp(iElevator, Prop_Data, "m_nSolidType", 6);
-		SetEntPropFloat(iElevator, Prop_Send, "m_flModelScale", 0.42);  
+		SetEntPropFloat(iElevator, Prop_Send, "m_flModelScale", 0.445);  
 		Build_RegisterEntityOwner(iElevator, iBuilder);
 		
 		if (!IsModelPrecached(szModel))
