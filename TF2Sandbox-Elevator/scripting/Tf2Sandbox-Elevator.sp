@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "2.0"
+#define PLUGIN_VERSION "2.5"
 
 #include <sourcemod>
 #include <sdktools>
@@ -163,7 +163,14 @@ public int Handler_ElevatorMenu(Menu menu, MenuAction action, int client, int se
 			{
 				float fOrigin[3];
 				GetEntPropVector(g_iElevatorIndex[client], Prop_Send, "m_vecOrigin", fOrigin);
-				g_fElevatorLowest[client] = fOrigin[2];
+				if(fOrigin[2] < g_fElevatorHighest[client])
+				{
+					g_fElevatorLowest[client] = fOrigin[2];
+				}
+				else
+				{
+					PrintCenterText(client, "Error!, You can NOT set the position higher than the highest position!");
+				}
 			}
 		}
 		else if (StrEqual(info, "SETHIGHEST"))
@@ -172,7 +179,14 @@ public int Handler_ElevatorMenu(Menu menu, MenuAction action, int client, int se
 			{
 				float fOrigin[3];
 				GetEntPropVector(g_iElevatorIndex[client], Prop_Send, "m_vecOrigin", fOrigin);
-				g_fElevatorHighest[client] = fOrigin[2];
+				if(fOrigin[2] > g_fElevatorLowest[client])
+				{
+					g_fElevatorHighest[client] = fOrigin[2];
+				}
+				else
+				{
+					PrintCenterText(client, "Error!, You can NOT set the position lower than the lowest position!");
+				}
 			}
 		}
 		else if (StrEqual(info, "UP"))
@@ -208,8 +222,7 @@ public int Handler_ElevatorMenu(Menu menu, MenuAction action, int client, int se
 					CreateTimer(5.0, Timer_ElevatorAction, client);
 				}
 			}
-		}
-				
+		}				
 		Command_ElevatorMenu(client, -1);
 	}
 	else if (action == MenuAction_Cancel)
@@ -243,14 +256,11 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				TeleportEntity(g_iElevatorIndex[client], fOrigin, NULL_VECTOR, NULL_VECTOR);
 
 				char cSoundPath[64] = "items/cart_rolling_start.wav";			
-				PrecacheSound(cSoundPath);
+				if (!IsSoundPrecached(cSoundPath)) PrecacheSound(cSoundPath);
 				EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
 				
 				if (g_fElevatorLowest[client] >= fOrigin[2])
 				{
-					cSoundPath = "items/cart_rolling_stop.wav";			
-					PrecacheSound(cSoundPath);
-					EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
 					g_iElevatorAutoAction[client] = 0;
 					CreateTimer(10.0, Timer_ElevatorAction, client);
 				}
@@ -262,17 +272,24 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				TeleportEntity(g_iElevatorIndex[client], fOrigin, NULL_VECTOR, NULL_VECTOR);
 
 				char cSoundPath[64] = "items/cart_rolling_start.wav";			
-				PrecacheSound(cSoundPath);
+				if (!IsSoundPrecached(cSoundPath)) PrecacheSound(cSoundPath);
 				EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
 				
 				if (g_fElevatorHighest[client] <= fOrigin[2])
 				{
-					cSoundPath = "items/cart_rolling_stop.wav";			
-					PrecacheSound(cSoundPath);
-					EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
 					g_iElevatorAutoAction[client] = 0;
 					CreateTimer(10.0, Timer_ElevatorAction, client);
 				}
+			}
+			else if(g_iElevatorAutoAction[client] == 0)
+			{
+				char cSoundPath[64] = "items/cart_rolling_stop.wav";			
+				if (!IsSoundPrecached(cSoundPath)) PrecacheSound(cSoundPath);
+				EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
+				cSoundPath = "misc/hologram_stop.wav";			
+				if (!IsSoundPrecached(cSoundPath)) PrecacheSound(cSoundPath);
+				EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);		
+				g_iElevatorAutoAction[client] = -1;
 			}
 			
 			//PrintCenterText(client, "Value: %i", g_iElevatorAutoAction[client]);
@@ -283,7 +300,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			TeleportEntity(g_iElevatorIndex[client], fOrigin, NULL_VECTOR, NULL_VECTOR);
 
 			char cSoundPath[64] = "items/cart_rolling_start.wav";			
-			PrecacheSound(cSoundPath);
+			if (!IsSoundPrecached(cSoundPath)) PrecacheSound(cSoundPath);
 			EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
 		}
 		else if(g_iElevatorAction[client] == 2 && g_fElevatorLowest[client] <= fOrigin[2])
@@ -292,17 +309,17 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			TeleportEntity(g_iElevatorIndex[client], fOrigin, NULL_VECTOR, NULL_VECTOR);
 
 			char cSoundPath[64] = "items/cart_rolling_start.wav";			
-			PrecacheSound(cSoundPath);
+			if (!IsSoundPrecached(cSoundPath)) PrecacheSound(cSoundPath);
 			EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
 		}
 		else if((g_iElevatorAction[client] == 0 || g_fElevatorHighest[client] >= fOrigin[2] || g_fElevatorLowest[client] <= fOrigin[2]) && g_iElevatorAction[client] != -1)
 		{
 			char cSoundPath[64] = "items/cart_rolling_stop.wav";			
-			PrecacheSound(cSoundPath);
+			if (!IsSoundPrecached(cSoundPath)) PrecacheSound(cSoundPath);
 			EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
 			
 			cSoundPath = "misc/hologram_stop.wav";			
-			PrecacheSound(cSoundPath);
+			if (!IsSoundPrecached(cSoundPath)) PrecacheSound(cSoundPath);
 			EmitSoundToAll(cSoundPath, g_iElevatorIndex[client], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);			
 			g_iElevatorAction[client] = -1;
 		}

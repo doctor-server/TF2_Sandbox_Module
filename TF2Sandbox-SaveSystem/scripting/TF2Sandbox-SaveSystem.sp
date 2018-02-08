@@ -1,4 +1,4 @@
- ////////////////////////
+////////////////////////
 // Table of contents: 
 //		Main Menu	  
 //					  
@@ -16,7 +16,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "6.5"
+#define PLUGIN_VERSION "6.6"
 
 #include <sourcemod>
 #include <sdktools>
@@ -30,13 +30,13 @@ public Plugin myinfo =
 {
 	name = "[TF2] SandBox - SaveSystem", 
 	author = PLUGIN_AUTHOR, 
-	description = "Save System for TF2SB", 
+	description = "Save System for TF2SandBox", 
 	version = PLUGIN_VERSION, 
 	url = "http://steamcommunity.com/id/battlefieldduck/"
 };
 
 Handle g_hFileEditting[MAXPLAYERS + 1] = INVALID_HANDLE;
-Handle cviCoolDownsec;
+Handle cvg_iCoolDownsec;
 Handle cviStoreSlot;
 Handle cviLoadMode;
 Handle cviLoadSec;
@@ -45,18 +45,18 @@ Handle cvPluginVersion;
 Handle cviAdvertisement;
 Handle cvMapname;
 
-char CurrentMap[64];
+char g_cCurrentMap[64];
 
-bool bEnabled = true;
-bool bPermission[MAXPLAYERS + 1][51]; //client, slot
+bool g_bEnabled = true;
+bool g_bPermission[MAXPLAYERS + 1][51]; //client, slot
 
 //Cache system
-bool IsClientInServer[MAXPLAYERS + 1] = false;
+bool g_bIsClientInServer[MAXPLAYERS + 1] = false;
 bool g_bWaitingForPlayers;
 //------------
 
-int iCoolDown[MAXPLAYERS + 1] = 0;
-int iSelectedClient[MAXPLAYERS + 1];
+int g_iCoolDown[MAXPLAYERS + 1] = 0;
+int g_iSelectedClient[MAXPLAYERS + 1];
 
 /*******************************************************************************************
 	Start
@@ -65,7 +65,7 @@ public void OnPluginStart()
 {
 	cvPluginVersion = CreateConVar("sm_tf2sb_ss_version", PLUGIN_VERSION, "", FCVAR_SPONLY | FCVAR_NOTIFY);
 	
-	cviCoolDownsec = CreateConVar("sm_tf2sb_ss_cooldownsec", "2", "(1 - 50) Set CoolDown seconds to prevent flooding.", 0, true, 1.0, true, 50.0);
+	cvg_iCoolDownsec = CreateConVar("sm_tf2sb_ss_cooldownsec", "2", "(1 - 50) Set CoolDown seconds to prevent flooding.", 0, true, 1.0, true, 50.0);
 	cviStoreSlot = CreateConVar("sm_tf2sb_ss_storeslots", "4", "(1 - 50) How many slots for client to save", 0, true, 1.0, true, 50.0);
 	cviLoadMode = CreateConVar("sm_tf2sb_ss_loadmode", "1", "1 = Load instantly, 2 = Load Props by Timer (Slower but less lag?)", 0, true, 1.0, true, 2.0);
 	cviLoadSec = CreateConVar("sm_tf2sb_ss_loadsec", "0.01", "(0.01 - 1.00) Load Props/Sec (Work on sm_tf2sb_ss_loadmode 2 only)", 0, true, 0.01, true, 1.0);
@@ -107,16 +107,10 @@ public Action Command_LoadDataFromDatabase(int client, int args)
 {
 	if (Build_IsClientValid(client, client))
 	{
-		if (iCoolDown[client] != 0)
-			Build_PrintToChat(client, "Load Function is currently cooling down, please wait \x04%i\x01 seconds.", iCoolDown[client]);
+		if (g_iCoolDown[client] != 0)
+			Build_PrintToChat(client, "Load Function is currently cooling down, please wait \x04%i\x01 seconds.", g_iCoolDown[client]);
 		else if (args == 2)
 		{
-			//char cArg[64], szBuffer[3][255], cTarget[20], cSlot[8];
-			//GetCmdArgString(cArg, sizeof(cArg));
-			//ExplodeString(cArg, " ", szBuffer, args, 255);
-			//Format(cTarget, sizeof(cTarget), "%s", szBuffer[0]);
-			//Format(cSlot, sizeof(cSlot), "%s", szBuffer[1]);
-			
 			char cTarget[20], cSlot[8];
 			GetCmdArg(1, cTarget, sizeof(cTarget));
 			GetCmdArg(2, cSlot, sizeof(cSlot));
@@ -133,7 +127,7 @@ public Action Command_LoadDataFromDatabase(int client, int args)
 				Build_PrintToChat(client, "Searching steamid(\x04%s\x01)... Searching file slot\x04%i\x01...", cTarget, StringToInt(cSlot));
 				
 				char cFileName[255];
-				BuildPath(Path_SM, cFileName, sizeof(cFileName), "data/TF2SBSaveSystem/%s&%s@%i.tf2sb", CurrentMap, cTarget, StringToInt(cSlot));
+				BuildPath(Path_SM, cFileName, sizeof(cFileName), "data/TF2SBSaveSystem/%s&%s@%i.tf2sb", g_cCurrentMap, cTarget, StringToInt(cSlot));
 				
 				if (FileExists(cFileName))
 					LoadDataSteamID(client, cTarget, StringToInt(cSlot));
@@ -148,7 +142,7 @@ public Action Command_LoadDataFromDatabase(int client, int args)
 				else
 					Build_PrintToChat(client, "Error: Fail to find the Data File...");
 			}
-			iCoolDown[client] = GetConVarInt(cviCoolDownsec);
+			g_iCoolDown[client] = GetConVarInt(cvg_iCoolDownsec);
 			CreateTimer(0.05, Timer_CoolDownFunction, client);
 		}
 		else
@@ -160,20 +154,20 @@ public Action Command_LoadDataFromDatabase(int client, int args)
 public void OnMapStart()
 {
 	for (int i = 1; i < MAXPLAYERS; i++)
-	OnClientPutInServer(i);
+		OnClientPutInServer(i);
 	
-	CreateTimer(10.0, Timer_Ads, 0, TIMER_FLAG_NO_MAPCHANGE);
+	CreateTimer(GetConVarFloat(cviAdvertisement), Timer_Ads, 0, TIMER_FLAG_NO_MAPCHANGE);
 	CreateTimer(6.0, Timer_LoadMap, 0, TIMER_FLAG_NO_MAPCHANGE);
 }
 
 public void OnClientPutInServer(int client)
 {
-	iCoolDown[client] = 0;
+	g_iCoolDown[client] = 0;
 	for (int j = 0; j < 50; j++)
-	bPermission[client][j] = false;
+	g_bPermission[client][j] = false;
 	
 	//Cache system
-	IsClientInServer[client] = true;
+	g_bIsClientInServer[client] = true;
 	CreateTimer(10.0, Timer_Load, client);
 	//------------
 }
@@ -181,7 +175,7 @@ public void OnClientPutInServer(int client)
 public void OnClientDisconnect(int client)
 {
 	//Cache system
-	IsClientInServer[client] = false;
+	g_bIsClientInServer[client] = false;
 	//------------
 }
 
@@ -202,12 +196,10 @@ public void TF2_OnWaitingForPlayersEnd()
 *******************************************************************************************/
 public Action Timer_CoolDownFunction(Handle timer, int client)
 {
-	iCoolDown[client] -= 1;
+	g_iCoolDown[client] -= 1;
 	
-	if (iCoolDown[client] >= 1)
-		CreateTimer(1.0, Timer_CoolDownFunction, client);
-	else
-		iCoolDown[client] = 0;
+	if (g_iCoolDown[client] >= 1)	CreateTimer(1.0, Timer_CoolDownFunction, client);
+	else	g_iCoolDown[client] = 0;
 }
 
 public Action Timer_Ads(Handle timer, int LoopNumber)
@@ -234,9 +226,9 @@ public Action Timer_LoadMap(Handle timer, int client)
 	GetConVarString(cvMapname, Mapname, sizeof(Mapname));
 	
 	if (strlen(Mapname) == 0)
-		GetCurrentMap(CurrentMap, sizeof(CurrentMap));
+		GetCurrentMap(g_cCurrentMap, sizeof(g_cCurrentMap));
 	else
-		strcopy(CurrentMap, sizeof(Mapname), Mapname);
+		strcopy(g_cCurrentMap, sizeof(Mapname), Mapname);
 }
 
 //Cache system
@@ -245,7 +237,7 @@ public Action Timer_Save(Handle timer, int client)
 	if (IsValidClient(client) && !IsFakeClient(client))
 		SaveData(client, 0);
 	
-	if (IsClientInServer[client])
+	if (g_bIsClientInServer[client])
 		CreateTimer(10.0, Timer_Save, client);
 }
 
@@ -268,7 +260,7 @@ public Action Timer_Load(Handle timer, int client)
 *******************************************************************************************/
 public Action Command_CacheMenu(int client, int args)
 {
-	if (bEnabled)
+	if (g_bEnabled)
 	{
 		char menuinfo[1024];
 		Menu menu = new Menu(Handler_CacheMenu);
@@ -341,12 +333,12 @@ public int Handler_CacheMenu(Menu menu, MenuAction action, int client, int selec
 *******************************************************************************************/
 public Action Command_MainMenu(int client, int args)
 {
-	if (bEnabled)
+	if (g_bEnabled)
 	{
 		char menuinfo[1024];
 		Menu menu = new Menu(Handler_MainMenu);
 		
-		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s \nMap: %s\n ", PLUGIN_VERSION, CurrentMap);
+		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s \nMap: %s\n ", PLUGIN_VERSION, g_cCurrentMap);
 		menu.SetTitle(menuinfo);
 		
 		Format(menuinfo, sizeof(menuinfo), " Load... ", client);
@@ -411,12 +403,12 @@ public int Handler_MainMenu(Menu menu, MenuAction action, int client, int select
 *******************************************************************************************/
 public Action Command_LoadMenu(int client, int args)
 {
-	if (bEnabled)
+	if (g_bEnabled)
 	{
 		char menuinfo[255];
 		Menu menu = new Menu(Handler_LoadMenu);
 		
-		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s \nMap: %s \n \nSelect a Slot to LOAD....", PLUGIN_VERSION, CurrentMap);
+		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s \nMap: %s \n \nSelect a Slot to LOAD....", PLUGIN_VERSION, g_cCurrentMap);
 		menu.SetTitle(menuinfo);
 		
 		char cSlot[6];
@@ -453,14 +445,14 @@ public int Handler_LoadMenu(Menu menu, MenuAction action, int client, int select
 		
 		int iSlot = StringToInt(info);
 		
-		if (iCoolDown[client] == 0)
+		if (g_iCoolDown[client] == 0)
 		{
 			LoadData(client, client, iSlot);
-			iCoolDown[client] = GetConVarInt(cviCoolDownsec);
+			g_iCoolDown[client] = GetConVarInt(cvg_iCoolDownsec);
 			CreateTimer(0.05, Timer_CoolDownFunction, client);
 		}
 		else
-			Build_PrintToChat(client, "Load Function is currently cooling down, please wait \x04%i\x01 seconds.", iCoolDown[client]);
+			Build_PrintToChat(client, "Load Function is currently cooling down, please wait \x04%i\x01 seconds.", g_iCoolDown[client]);
 		
 		Command_LoadMenu(client, -1);
 	}
@@ -478,12 +470,12 @@ public int Handler_LoadMenu(Menu menu, MenuAction action, int client, int select
 *******************************************************************************************/
 public Action Command_SaveMenu(int client, int args)
 {
-	if (bEnabled)
+	if (g_bEnabled)
 	{
 		char menuinfo[255];
 		Menu menu = new Menu(Handler_SaveMenu);
 		
-		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s \nMap: %s \n \nSelect a Slot to SAVE....", PLUGIN_VERSION, CurrentMap);
+		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s \nMap: %s \n \nSelect a Slot to SAVE....", PLUGIN_VERSION, g_cCurrentMap);
 		menu.SetTitle(menuinfo);
 		
 		char cSlot[6];
@@ -520,14 +512,14 @@ public int Handler_SaveMenu(Menu menu, MenuAction action, int client, int select
 		
 		int iSlot = StringToInt(info);
 		
-		if (iCoolDown[client] == 0)
+		if (g_iCoolDown[client] == 0)
 		{
 			SaveData(client, iSlot);
-			iCoolDown[client] = GetConVarInt(cviCoolDownsec);
+			g_iCoolDown[client] = GetConVarInt(cvg_iCoolDownsec);
 			CreateTimer(0.05, Timer_CoolDownFunction, client);
 		}
 		else
-			Build_PrintToChat(client, "Save Function is currently cooling down, please wait \x04%i\x01 seconds.", iCoolDown[client]);
+			Build_PrintToChat(client, "Save Function is currently cooling down, please wait \x04%i\x01 seconds.", g_iCoolDown[client]);
 		
 		Command_SaveMenu(client, -1);
 	}
@@ -545,12 +537,12 @@ public int Handler_SaveMenu(Menu menu, MenuAction action, int client, int select
 *******************************************************************************************/
 public Action Command_DeleteMenu(int client, int args)
 {
-	if (bEnabled)
+	if (g_bEnabled)
 	{
 		char menuinfo[255];
 		Menu menu = new Menu(Handler_DeleteMenu);
 		
-		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s \nMap: %s \n \nSelect a Slot to DELETE....", PLUGIN_VERSION, CurrentMap);
+		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s \nMap: %s \n \nSelect a Slot to DELETE....", PLUGIN_VERSION, g_cCurrentMap);
 		menu.SetTitle(menuinfo);
 		
 		char cSlot[6];
@@ -603,12 +595,12 @@ public int Handler_DeleteMenu(Menu menu, MenuAction action, int client, int sele
 *******************************************************************************************/
 public Action Command_DeleteConfirmMenu(int client, int iSlot)
 {
-	if (bEnabled)
+	if (g_bEnabled)
 	{
 		char menuinfo[255];
 		Menu menu = new Menu(Handler_DeleteConfirmMenu);
 		
-		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s \nMap: %s \n \n Are you sure to DELETE slot %i?", PLUGIN_VERSION, CurrentMap, iSlot);
+		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s \nMap: %s \n \n Are you sure to DELETE slot %i?", PLUGIN_VERSION, g_cCurrentMap, iSlot);
 		menu.SetTitle(menuinfo);
 		
 		char cSlot[8];
@@ -652,12 +644,12 @@ public int Handler_DeleteConfirmMenu(Menu menu, MenuAction action, int client, i
 *******************************************************************************************/
 public Action Command_PermissionMenu(int client, int args)
 {
-	if (bEnabled)
+	if (g_bEnabled)
 	{
 		char menuinfo[255];
 		Menu menu = new Menu(Handler_PermissionMenu);
 		
-		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s\nMap: %s\n \nSet Permission on project:\n [Private]: Only you can load the project (Default)\n [Public]: Let others to load your project\n ", PLUGIN_VERSION, CurrentMap);
+		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s\nMap: %s\n \nSet Permission on project:\n [Private]: Only you can load the project (Default)\n [Public]: Let others to load your project\n ", PLUGIN_VERSION, g_cCurrentMap);
 		menu.SetTitle(menuinfo);
 		
 		char cSlot[6];
@@ -670,7 +662,7 @@ public Action Command_PermissionMenu(int client, int args)
 			{
 				GetDataDate(client, iSlot, cDate, sizeof(cDate));
 				
-				if (bPermission[client][iSlot])
+				if (g_bPermission[client][iSlot])
 					cPermission = "Public";
 				else
 					cPermission = "Private";
@@ -701,23 +693,23 @@ public int Handler_PermissionMenu(Menu menu, MenuAction action, int client, int 
 		
 		int iSlot = StringToInt(info);
 		
-		if (iCoolDown[client] == 0)
+		if (g_iCoolDown[client] == 0)
 		{
-			if (bPermission[client][iSlot])
+			if (g_bPermission[client][iSlot])
 			{
-				bPermission[client][iSlot] = false;
+				g_bPermission[client][iSlot] = false;
 				Build_PrintToChat(client, "Slot\x04%i\x01 Permission have set to \x04Private\x01.", iSlot);
 			}
 			else
 			{
-				bPermission[client][iSlot] = true;
+				g_bPermission[client][iSlot] = true;
 				Build_PrintToChat(client, "Slot\x04%i\x01 Permission have set to \x04Public\x01.", iSlot);
 			}
-			iCoolDown[client] = GetConVarInt(cviCoolDownsec);
+			g_iCoolDown[client] = GetConVarInt(cvg_iCoolDownsec);
 			CreateTimer(0.05, Timer_CoolDownFunction, client);
 		}
 		else
-			Build_PrintToChat(client, "Permission Function is currently cooling down, please wait \x04%i\x01 seconds.", iCoolDown[client]);
+			Build_PrintToChat(client, "Permission Function is currently cooling down, please wait \x04%i\x01 seconds.", g_iCoolDown[client]);
 		
 		Command_PermissionMenu(client, -1);
 	}
@@ -735,12 +727,12 @@ public int Handler_PermissionMenu(Menu menu, MenuAction action, int client, int 
 *******************************************************************************************/
 public Action Command_LoadOthersMenu(int client, int args)
 {
-	if (bEnabled)
+	if (g_bEnabled)
 	{
 		char menuinfo[255];
 		Menu menu = new Menu(Handler_LoadOthersMenu);
 		
-		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s\nMap: %s\n \nLoad others project,\nPlease select a Player:\n ", PLUGIN_VERSION, CurrentMap);
+		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s\nMap: %s\n \nLoad others project,\nPlease select a Player:\n ", PLUGIN_VERSION, g_cCurrentMap);
 		menu.SetTitle(menuinfo);
 		
 		char cClient[4];
@@ -773,7 +765,7 @@ public int Handler_LoadOthersMenu(Menu menu, MenuAction action, int client, int 
 		if (IsValidClient(iClient))
 		{
 			Command_LoadOthersProjectsMenu(client, iClient);
-			iSelectedClient[client] = iClient;
+			g_iSelectedClient[client] = iClient;
 		}
 		else
 		{
@@ -795,7 +787,7 @@ public int Handler_LoadOthersMenu(Menu menu, MenuAction action, int client, int 
 *******************************************************************************************/
 public Action Command_LoadOthersProjectsMenu(int client, int selectedclient) //client, selected client
 {
-	if (bEnabled)
+	if (g_bEnabled)
 	{
 		char menuinfo[255];
 		Menu menu = new Menu(Handler_LoadOthersProjectsMenu);
@@ -809,7 +801,7 @@ public Action Command_LoadOthersProjectsMenu(int client, int selectedclient) //c
 			Command_LoadOthersMenu(client, -1);
 		}
 		
-		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s\nMap: %s\n \nSelected Player: %s\n \nSelect a Slot to LOAD....", PLUGIN_VERSION, CurrentMap, cSelectedclentName);
+		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s\nMap: %s\n \nSelected Player: %s\n \nSelect a Slot to LOAD....", PLUGIN_VERSION, g_cCurrentMap, cSelectedclentName);
 		menu.SetTitle(menuinfo);
 		
 		char cSlot[6];
@@ -822,7 +814,7 @@ public Action Command_LoadOthersProjectsMenu(int client, int selectedclient) //c
 			{
 				GetDataDate(selectedclient, iSlot, cDate, sizeof(cDate));
 				
-				if (bPermission[selectedclient][iSlot])
+				if (g_bPermission[selectedclient][iSlot])
 				{
 					cPermission = "Public";
 					Format(menuinfo, sizeof(menuinfo), " Slot %i (Stored %s, %i Props) : [%s]", iSlot, cDate, GetDataProps(selectedclient, iSlot), cPermission);
@@ -858,24 +850,24 @@ public int Handler_LoadOthersProjectsMenu(Menu menu, MenuAction action, int clie
 		
 		int iSlot = StringToInt(info);
 		
-		if (IsValidClient(iSelectedClient[client]))
+		if (IsValidClient(g_iSelectedClient[client]))
 		{
-			if (iCoolDown[client] == 0)
+			if (g_iCoolDown[client] == 0)
 			{
-				LoadData(client, iSelectedClient[client], iSlot);
+				LoadData(client, g_iSelectedClient[client], iSlot);
 				
 				char cName[48];
 				GetClientName(client, cName, sizeof(cName));
-				Build_PrintToChat(iSelectedClient[client], "Player \x04%s\x01 have load your Slot\x04%i\x01!", cName, iSlot);
-				PrintCenterText(iSelectedClient[client], "Player %s have load your Slot %i!", cName, iSlot);
-				iCoolDown[client] = GetConVarInt(cviCoolDownsec);
+				Build_PrintToChat(g_iSelectedClient[client], "Player \x04%s\x01 have load your Slot\x04%i\x01!", cName, iSlot);
+				PrintCenterText(g_iSelectedClient[client], "Player %s have load your Slot %i!", cName, iSlot);
+				g_iCoolDown[client] = GetConVarInt(cvg_iCoolDownsec);
 				CreateTimer(0.05, Timer_CoolDownFunction, client);
 			}
 			else
-				Build_PrintToChat(client, "Load Function is currently cooling down, please wait \x04%i\x01 seconds.", iCoolDown[client]);
+				Build_PrintToChat(client, "Load Function is currently cooling down, please wait \x04%i\x01 seconds.", g_iCoolDown[client]);
 		}
 		
-		Command_LoadOthersProjectsMenu(client, iSelectedClient[client]);
+		Command_LoadOthersProjectsMenu(client, g_iSelectedClient[client]);
 	}
 	else if (action == MenuAction_Cancel)
 	{
@@ -895,12 +887,12 @@ public int Handler_LoadOthersProjectsMenu(Menu menu, MenuAction action, int clie
 *******************************************************************************************/
 public Action Command_CheckCacheMenu(int client, int args)
 {
-	if (bEnabled)
+	if (g_bEnabled)
 	{
 		char menuinfo[255];
 		Menu menu = new Menu(Handler_CheckCacheMenu);
 		
-		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s \nMap: %s\n \nPlugin Author: BattlefieldDuck\nCredits: Danct12, Leadkiller, aIM...\n \nCache System (In Development): RUNNING\n ", PLUGIN_VERSION, CurrentMap);
+		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Save System Main Menu %s \nMap: %s\n \nPlugin Author: BattlefieldDuck\nCredits: Danct12, Leadkiller, aIM...\n \nCache System (In Development): RUNNING\n ", PLUGIN_VERSION, g_cCurrentMap);
 		menu.SetTitle(menuinfo);
 		
 		int iSlot = 0;
@@ -963,7 +955,7 @@ void LoadData(int loader, int client, int slot) // Load Data from data file (loa
 void LoadDataSteamID(int loader, char[] SteamID64, int slot) // Load Data from data file (loader, client steamid64 in data file, slot number) //Special!! X Cache
 {
 	char cFileName[255];
-	BuildPath(Path_SM, cFileName, sizeof(cFileName), "data/TF2SBSaveSystem/%s&%s@%i.tf2sb", CurrentMap, SteamID64, slot);
+	BuildPath(Path_SM, cFileName, sizeof(cFileName), "data/TF2SBSaveSystem/%s&%s@%i.tf2sb", g_cCurrentMap, SteamID64, slot);
 	
 	if (FileExists(cFileName))
 		LoadFunction(loader, slot, cFileName);
@@ -1007,173 +999,6 @@ void LoadFunction(int loader, int slot, char cFileName[255])
 							g_iCountEntity++;
 						g_iCountLoop++;
 					}
-					/*
-					if (StrContains(szLoadString, "ent") != -1 && StrContains(szLoadString, ";") == -1) //Map name have ent sytax??? Holy
-					{
-						ExplodeString(szLoadString, " ", szBuffer, 20, 255);
-						Format(szClass, sizeof(szClass), "%s", szBuffer[1]);
-						Format(szModel, sizeof(szModel), "%s", szBuffer[2]);
-						fOrigin[0] = StringToFloat(szBuffer[3]);
-						fOrigin[1] = StringToFloat(szBuffer[4]);
-						fOrigin[2] = StringToFloat(szBuffer[5]);
-						fAngles[0] = StringToFloat(szBuffer[6]);
-						fAngles[1] = StringToFloat(szBuffer[7]);
-						fAngles[2] = StringToFloat(szBuffer[8]);
-						iCollision = StringToInt(szBuffer[9]);
-						fSize = StringToFloat(szBuffer[10]);
-						iRed = StringToInt(szBuffer[11]);
-						iGreen = StringToInt(szBuffer[12]);
-						iBlue = StringToInt(szBuffer[13]);
-						iAlpha = StringToInt(szBuffer[14]);
-						iRenderFx = StringToInt(szBuffer[15]);
-						
-						if (strlen(szBuffer[9]) == 0)
-							iCollision = 5;
-						if (strlen(szBuffer[10]) == 0)
-							fSize = 1.0;
-						if (strlen(szBuffer[11]) == 0)
-							iRed = 255;
-						if (strlen(szBuffer[12]) == 0)
-							iGreen = 255;
-						if (strlen(szBuffer[13]) == 0)
-							iBlue = 255;
-						if (strlen(szBuffer[14]) == 0)
-							iAlpha = 255;
-						if (strlen(szBuffer[15]) == 0)
-							iRenderFx = 1;
-						
-						//iHealth = StringToInt(szBuffer[9]);
-						//if (iHealth == 2)
-						//	iHealth = 999999999;
-						//if (iHealth == 1)
-						//	iHealth = 50;
-						if (StrContains(szClass, "prop_dynamic") >= 0)
-						{
-							Obj_LoadEntity = CreateEntityByName("prop_dynamic_override");
-							SetEntProp(Obj_LoadEntity, Prop_Send, "m_nSolidType", 6);
-							SetEntProp(Obj_LoadEntity, Prop_Data, "m_nSolidType", 6);
-						}
-						else if (StrEqual(szClass, "prop_physics"))
-							Obj_LoadEntity = CreateEntityByName("prop_physics_override");
-						else if (StrContains(szClass, "prop_physics") >= 0)
-							Obj_LoadEntity = CreateEntityByName(szClass);
-						
-						if (Obj_LoadEntity > MaxClients && IsValidEntity(Obj_LoadEntity) && GetClientSpawnedEntities(loader) < GetClientMaxHoldEntities())
-						{
-							if (Build_RegisterEntityOwner(Obj_LoadEntity, loader))
-							{
-								if (!IsModelPrecached(szModel))
-									PrecacheModel(szModel);
-								
-								DispatchKeyValue(Obj_LoadEntity, "model", szModel);
-								TeleportEntity(Obj_LoadEntity, fOrigin, fAngles, NULL_VECTOR);
-								DispatchSpawn(Obj_LoadEntity);
-								
-								SetEntProp(Obj_LoadEntity, Prop_Data, "m_CollisionGroup", iCollision);
-								SetEntPropFloat(Obj_LoadEntity, Prop_Send, "m_flModelScale", fSize);
-								SetEntityRenderColor(Obj_LoadEntity, iRed, iGreen, iBlue, iAlpha);
-								
-								switch (iRenderFx)
-								{
-									case 1:FxRender = RENDERFX_NONE;
-									case 2:FxRender = RENDERFX_PULSE_SLOW;
-									case 3:FxRender = RENDERFX_PULSE_FAST;
-									case 4:FxRender = RENDERFX_PULSE_SLOW_WIDE;
-									case 5:FxRender = RENDERFX_PULSE_FAST_WIDE;
-									case 6:FxRender = RENDERFX_FADE_SLOW;
-									case 7:FxRender = RENDERFX_FADE_FAST;
-									case 8:FxRender = RENDERFX_SOLID_SLOW;
-									case 9:FxRender = RENDERFX_SOLID_FAST;
-									case 10:FxRender = RENDERFX_STROBE_SLOW;
-									case 11:FxRender = RENDERFX_STROBE_FAST;
-									case 12:FxRender = RENDERFX_STROBE_FASTER;
-									case 13:FxRender = RENDERFX_FLICKER_SLOW;
-									case 14:FxRender = RENDERFX_FLICKER_FAST;
-									case 15:FxRender = RENDERFX_NO_DISSIPATION;
-									case 16:FxRender = RENDERFX_DISTORT;
-									case 17:FxRender = RENDERFX_HOLOGRAM;
-								}
-								SetEntityRenderFx(Obj_LoadEntity, FxRender);
-								
-								//SetVariantInt(iHealth);
-								//AcceptEntityInput(Obj_LoadEntity, "sethealth", -1);
-								//AcceptEntityInput(Obj_LoadEntity, "disablemotion", -1);
-								g_iCountEntity++;
-								
-								//light bulb
-								if (StrEqual(szModel, "models/props_2fort/lightbulb001.mdl"))
-								{
-									//char 
-									//fAngles[1] = StringToFloat(szBuffer[9]); //brightness
-									//fAngles[2] = StringToFloat(szBuffer[10]); //Red
-									//fAngles[2] = StringToFloat(szBuffer[10]); //Green
-									//fAngles[2] = StringToFloat(szBuffer[10]); //Blue
-									
-									int Obj_LightDynamic = CreateEntityByName("light_dynamic");
-									
-									char szColor[32];
-									Format(szColor, sizeof(szColor), "255 255 255");
-									
-									SetVariantString("500");
-									AcceptEntityInput(Obj_LightDynamic, "distance", -1);
-									SetVariantString("7");
-									AcceptEntityInput(Obj_LightDynamic, "brightness", -1);
-									SetVariantString("2");
-									AcceptEntityInput(Obj_LightDynamic, "style", -1);
-									SetVariantString(szColor);
-									AcceptEntityInput(Obj_LightDynamic, "color", -1);
-									
-									if (Obj_LightDynamic != -1)
-									{
-										DispatchSpawn(Obj_LightDynamic);
-										TeleportEntity(Obj_LightDynamic, fOrigin, fAngles, NULL_VECTOR);
-										
-										char szNameMelon[64];
-										Format(szNameMelon, sizeof(szNameMelon), "Obj_LoadEntity%i", GetRandomInt(1000, 5000));
-										DispatchKeyValue(Obj_LoadEntity, "targetname", szNameMelon);
-										SetVariantString(szNameMelon);
-										AcceptEntityInput(Obj_LightDynamic, "setparent", -1);
-										AcceptEntityInput(Obj_LightDynamic, "turnon", loader, loader);
-									}
-								}
-								
-								//door
-								if (StrEqual(szModel, "models/props_lab/blastdoor001c.mdl"))
-								{
-									iRandom = GetRandomInt(1000, 5000);
-									IntToString(iRandom, DoorIndex, sizeof(DoorIndex));
-									Format(szFormatStr, sizeof(szFormatStr), "door%s", DoorIndex);
-									DispatchKeyValue(Obj_LoadEntity, "targetname", szFormatStr);
-									
-									Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,dog_open,0", DoorIndex);
-									DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-									Format(szFormatStr, sizeof(szFormatStr), "door%s,DisableCollision,,1", DoorIndex);
-									DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-									Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,close,5", DoorIndex);
-									DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-									Format(szFormatStr, sizeof(szFormatStr), "door%s,EnableCollision,,5.1", DoorIndex);
-									DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-								}
-								else if (StrEqual(szModel, "models/props_lab/RavenDoor.mdl"))
-								{
-									iRandom = GetRandomInt(1000, 5000);
-									IntToString(iRandom, DoorIndex, sizeof(DoorIndex));
-									Format(szFormatStr, sizeof(szFormatStr), "door%s", DoorIndex);
-									DispatchKeyValue(Obj_LoadEntity, "targetname", szFormatStr);
-									
-									Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,RavenDoor_Open,0", DoorIndex);
-									DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-									Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,RavenDoor_Drop,7", DoorIndex);
-									DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-								}
-								
-							}
-							else
-								RemoveEdict(Obj_LoadEntity);
-						}
-						g_iCountLoop++;
-					}
-					*/
 					if (IsEndOfFile(g_hFileEditting[loader]))
 						break;
 				}
@@ -1225,173 +1050,6 @@ public Action Timer_LoadProps(Handle timer, Handle dp)
 						g_iCountEntity++;
 					g_iCountLoop++;
 				}
-				/*
-				if (StrContains(szLoadString, "ent") != -1 && StrContains(szLoadString, ";") == -1) //Map name have ent sytax??? Holy
-				{
-					ExplodeString(szLoadString, " ", szBuffer, 20, 255);
-					Format(szClass, sizeof(szClass), "%s", szBuffer[1]);
-					Format(szModel, sizeof(szModel), "%s", szBuffer[2]);
-					fOrigin[0] = StringToFloat(szBuffer[3]);
-					fOrigin[1] = StringToFloat(szBuffer[4]);
-					fOrigin[2] = StringToFloat(szBuffer[5]);
-					fAngles[0] = StringToFloat(szBuffer[6]);
-					fAngles[1] = StringToFloat(szBuffer[7]);
-					fAngles[2] = StringToFloat(szBuffer[8]);
-					iCollision = StringToInt(szBuffer[9]);
-					fSize = StringToFloat(szBuffer[10]);
-					iRed = StringToInt(szBuffer[11]);
-					iGreen = StringToInt(szBuffer[12]);
-					iBlue = StringToInt(szBuffer[13]);
-					iAlpha = StringToInt(szBuffer[14]);
-					iRenderFx = StringToInt(szBuffer[15]);
-					
-					if (strlen(szBuffer[9]) == 0)
-						iCollision = 5;
-					if (strlen(szBuffer[10]) == 0)
-						fSize = 1.0;
-					if (strlen(szBuffer[11]) == 0)
-						iRed = 255;
-					if (strlen(szBuffer[12]) == 0)
-						iGreen = 255;
-					if (strlen(szBuffer[13]) == 0)
-						iBlue = 255;
-					if (strlen(szBuffer[14]) == 0)
-						iAlpha = 255;
-					if (strlen(szBuffer[15]) == 0)
-						iRenderFx = 1;
-					
-					//iHealth = StringToInt(szBuffer[9]);
-					//if (iHealth == 2)
-					//	iHealth = 999999999;
-					//if (iHealth == 1)
-					//	iHealth = 50;
-					if (StrContains(szClass, "prop_dynamic") >= 0)
-					{
-						Obj_LoadEntity = CreateEntityByName("prop_dynamic_override");
-						SetEntProp(Obj_LoadEntity, Prop_Send, "m_nSolidType", 6);
-						SetEntProp(Obj_LoadEntity, Prop_Data, "m_nSolidType", 6);
-					}
-					else if (StrEqual(szClass, "prop_physics"))
-						Obj_LoadEntity = CreateEntityByName("prop_physics_override");
-					else if (StrContains(szClass, "prop_physics") >= 0)
-						Obj_LoadEntity = CreateEntityByName(szClass);
-					
-					if (Obj_LoadEntity > MaxClients && IsValidEntity(Obj_LoadEntity) && GetClientSpawnedEntities(loader) < GetClientMaxHoldEntities())
-					{
-						if (Build_RegisterEntityOwner(Obj_LoadEntity, loader))
-						{
-							if (!IsModelPrecached(szModel))
-								PrecacheModel(szModel);
-							
-							DispatchKeyValue(Obj_LoadEntity, "model", szModel);
-							TeleportEntity(Obj_LoadEntity, fOrigin, fAngles, NULL_VECTOR);
-							DispatchSpawn(Obj_LoadEntity);
-							
-							SetEntProp(Obj_LoadEntity, Prop_Data, "m_CollisionGroup", iCollision);
-							SetEntPropFloat(Obj_LoadEntity, Prop_Send, "m_flModelScale", fSize);
-							SetEntityRenderColor(Obj_LoadEntity, iRed, iGreen, iBlue, iAlpha);
-							
-							switch (iRenderFx)
-							{
-								case 1:FxRender = RENDERFX_NONE;
-								case 2:FxRender = RENDERFX_PULSE_SLOW;
-								case 3:FxRender = RENDERFX_PULSE_FAST;
-								case 4:FxRender = RENDERFX_PULSE_SLOW_WIDE;
-								case 5:FxRender = RENDERFX_PULSE_FAST_WIDE;
-								case 6:FxRender = RENDERFX_FADE_SLOW;
-								case 7:FxRender = RENDERFX_FADE_FAST;
-								case 8:FxRender = RENDERFX_SOLID_SLOW;
-								case 9:FxRender = RENDERFX_SOLID_FAST;
-								case 10:FxRender = RENDERFX_STROBE_SLOW;
-								case 11:FxRender = RENDERFX_STROBE_FAST;
-								case 12:FxRender = RENDERFX_STROBE_FASTER;
-								case 13:FxRender = RENDERFX_FLICKER_SLOW;
-								case 14:FxRender = RENDERFX_FLICKER_FAST;
-								case 15:FxRender = RENDERFX_NO_DISSIPATION;
-								case 16:FxRender = RENDERFX_DISTORT;
-								case 17:FxRender = RENDERFX_HOLOGRAM;
-							}
-							SetEntityRenderFx(Obj_LoadEntity, FxRender);
-							
-							//SetVariantInt(iHealth);
-							//AcceptEntityInput(Obj_LoadEntity, "sethealth", -1);
-							//AcceptEntityInput(Obj_LoadEntity, "disablemotion", -1);
-							g_iCountEntity++;
-							
-							//light bulb
-							if (StrEqual(szModel, "models/props_2fort/lightbulb001.mdl"))
-							{
-								//char 
-								//fAngles[1] = StringToFloat(szBuffer[9]); //brightness
-								//fAngles[2] = StringToFloat(szBuffer[10]); //Red
-								//fAngles[2] = StringToFloat(szBuffer[10]); //Green
-								//fAngles[2] = StringToFloat(szBuffer[10]); //Blue
-								
-								int Obj_LightDynamic = CreateEntityByName("light_dynamic");
-								
-								char szColor[32];
-								Format(szColor, sizeof(szColor), "255 255 255");
-								
-								SetVariantString("500");
-								AcceptEntityInput(Obj_LightDynamic, "distance", -1);
-								SetVariantString("7");
-								AcceptEntityInput(Obj_LightDynamic, "brightness", -1);
-								SetVariantString("2");
-								AcceptEntityInput(Obj_LightDynamic, "style", -1);
-								SetVariantString(szColor);
-								AcceptEntityInput(Obj_LightDynamic, "color", -1);
-								
-								if (Obj_LightDynamic != -1)
-								{
-									DispatchSpawn(Obj_LightDynamic);
-									TeleportEntity(Obj_LightDynamic, fOrigin, fAngles, NULL_VECTOR);
-									
-									char szNameMelon[64];
-									Format(szNameMelon, sizeof(szNameMelon), "Obj_LoadEntity%i", GetRandomInt(1000, 5000));
-									DispatchKeyValue(Obj_LoadEntity, "targetname", szNameMelon);
-									SetVariantString(szNameMelon);
-									AcceptEntityInput(Obj_LightDynamic, "setparent", -1);
-									AcceptEntityInput(Obj_LightDynamic, "turnon", loader, loader);
-								}
-							}
-							
-							//door
-							if (StrEqual(szModel, "models/props_lab/blastdoor001c.mdl"))
-							{
-								iRandom = GetRandomInt(1000, 5000);
-								IntToString(iRandom, DoorIndex, sizeof(DoorIndex));
-								Format(szFormatStr, sizeof(szFormatStr), "door%s", DoorIndex);
-								DispatchKeyValue(Obj_LoadEntity, "targetname", szFormatStr);
-								
-								Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,dog_open,0", DoorIndex);
-								DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-								Format(szFormatStr, sizeof(szFormatStr), "door%s,DisableCollision,,1", DoorIndex);
-								DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-								Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,close,5", DoorIndex);
-								DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-								Format(szFormatStr, sizeof(szFormatStr), "door%s,EnableCollision,,5.1", DoorIndex);
-								DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-							}
-							else if (StrEqual(szModel, "models/props_lab/RavenDoor.mdl"))
-							{
-								iRandom = GetRandomInt(1000, 5000);
-								IntToString(iRandom, DoorIndex, sizeof(DoorIndex));
-								Format(szFormatStr, sizeof(szFormatStr), "door%s", DoorIndex);
-								DispatchKeyValue(Obj_LoadEntity, "targetname", szFormatStr);
-								
-								Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,RavenDoor_Open,0", DoorIndex);
-								DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-								Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,RavenDoor_Drop,7", DoorIndex);
-								DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-							}
-							
-						}
-						else
-							RemoveEdict(Obj_LoadEntity);
-					}
-					g_iCountLoop++;
-				}
-				*/
 				if (IsEndOfFile(g_hFileEditting[loader]))
 					break;
 			}
@@ -1491,7 +1149,11 @@ bool LoadProps(int loader, char szLoadString[255])
 			DispatchSpawn(Obj_LoadEntity);
 			
 			SetEntProp(Obj_LoadEntity, Prop_Data, "m_CollisionGroup", iCollision);
+			
 			SetEntPropFloat(Obj_LoadEntity, Prop_Send, "m_flModelScale", fSize);
+			
+			if(iAlpha < 255)	SetEntityRenderMode(Obj_LoadEntity, RENDER_TRANSCOLOR);
+			else	SetEntityRenderMode(Obj_LoadEntity, RENDER_NORMAL);
 			SetEntityRenderColor(Obj_LoadEntity, iRed, iGreen, iBlue, iAlpha);
 			
 			switch (iRenderFx)
@@ -1581,7 +1243,7 @@ bool LoadProps(int loader, char szLoadString[255])
 				Format(szFormatStr, sizeof(szFormatStr), "door%s", DoorIndex);
 				DispatchKeyValue(Obj_LoadEntity, "targetname", szFormatStr);
 				
-				Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,RavenDoor_Open,0", DoorIndex);
+				Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,RavenDoor_Open,0", DoorIndex);	
 				DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
 				Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,RavenDoor_Drop,7", DoorIndex);
 				DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
@@ -1616,7 +1278,7 @@ void SaveData(int client, int slot) // Save Data from data file (CLIENT INDEX, S
 		RenderFx EntityRenderFx;
 		
 		FormatTime(szTime, sizeof(szTime), "%Y/%m/%d");
-		WriteFileLine(g_hFileEditting[client], ";- Saved Map: %s", CurrentMap);
+		WriteFileLine(g_hFileEditting[client], ";- Saved Map: %s", g_cCurrentMap);
 		WriteFileLine(g_hFileEditting[client], ";- SteamID64: %s (%N)", SteamID64, client);
 		WriteFileLine(g_hFileEditting[client], ";- Data Slot: %i", slot);
 		WriteFileLine(g_hFileEditting[client], ";- Saved on : %s", szTime);
@@ -1793,9 +1455,9 @@ void GetBuildPath(int client, int slot, char[] cFileNameout) //Get the sourcemod
 	
 	char cFileName[255];
 	if (slot == 0)
-		BuildPath(Path_SM, cFileName, sizeof(cFileName), "data/TF2SBCache/%s&%s.tf2sb", CurrentMap, SteamID64);
+		BuildPath(Path_SM, cFileName, sizeof(cFileName), "data/TF2SBCache/%s&%s.tf2sb", g_cCurrentMap, SteamID64);
 	else
-		BuildPath(Path_SM, cFileName, sizeof(cFileName), "data/TF2SBSaveSystem/%s&%s@%i.tf2sb", CurrentMap, SteamID64, slot);
+		BuildPath(Path_SM, cFileName, sizeof(cFileName), "data/TF2SBSaveSystem/%s&%s@%i.tf2sb", g_cCurrentMap, SteamID64, slot);
 	
 	strcopy(cFileNameout, sizeof(cFileName), cFileName);
 }
