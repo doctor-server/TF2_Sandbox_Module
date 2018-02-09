@@ -10,7 +10,7 @@ https://forums.alliedmods.net/showthread.php?t=190625
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "1.0"
+#define PLUGIN_VERSION "1.6"
 #define SOUND_STEP	"player/footsteps/concrete4.wav"
 
 #include <sourcemod>
@@ -30,16 +30,16 @@ public Plugin myinfo =
 };
 
 Handle g_hEnabled;
-float lastZ[MAXPLAYERS + 1];
-int iTouching[MAXPLAYERS + 1];
-bool soundCooldown[MAXPLAYERS + 1];
+float g_flastZ[MAXPLAYERS + 1];
+int g_iTouching[MAXPLAYERS + 1];
+bool g_bSoundCooldown[MAXPLAYERS + 1];
 
 public void OnPluginStart()
 {
 	HookEvent("player_spawn", OnPlayerSpawn);
 	
 	CreateConVar("sm_tf2sb_ladder_version", PLUGIN_VERSION, "", FCVAR_SPONLY | FCVAR_NOTIFY);
-	RegAdminCmd("sm_ladder", Command_Ladder, 0, "Build Ladder!");
+	RegAdminCmd("sm_sbladder", Command_Ladder, 0, "Build Ladder!");
 	g_hEnabled = CreateConVar("sm_tf2sb_ladder", "1", "Enable the Ladder plugin?", 0, true, 0.0, true, 1.0);
 	
 	//HookEntityOutput("trigger_multiple", "OnStartTouch", StartTouchTrigger);
@@ -49,7 +49,7 @@ public void OnPluginStart()
 public Action OnPlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(GetEventInt(event, "userid"));
-	iTouching[client] = 0;
+	g_iTouching[client] = 0;
 }
 
 public void OnMapStart()
@@ -78,23 +78,10 @@ public Action Command_Ladder(int client, int args)
 	if (!GetConVarBool(g_hEnabled) || !IsValidClient(client))
 		return;
 	
-	if (GetClientSpawnedEntities(client) >= GetClientMaxHoldEntities())
-	{
-		ClientCommand(client, "playgamesound \"%s\"", "buttons/button10.wav");
-		Build_PrintToChat(client, "You've hit the prop limit!");
-		PrintCenterText(client, "You've hit the prop limit!");
-		return;
-	}
-	
 	float fAimPos[3];
 	if (GetAimOrigin(client, fAimPos))
 	{
 		BuildLadder(client, fAimPos);
-		Build_PrintToChat(client, "The ladder Built.");
-	}
-	else
-	{
-		Build_PrintToChat(client, "Fail to build Ladder.");
 	}
 }
 
@@ -112,11 +99,14 @@ public void OnEntityCreated(int entity, const char[] classname)
 public Action Timer_LadderSpawn(Handle timer, int entity)
 {
 	char szModel[100];
-	GetEntPropString(entity, Prop_Data, "m_ModelName", szModel, sizeof(szModel));
-	if (StrEqual(szModel, "models/props_2fort/ladder001.mdl"))
+	if(IsValidEdict(entity))
 	{
-		//Function
-		SDKHook(entity, SDKHook_StartTouch, OnStartTouch);
+		GetEntPropString(entity, Prop_Data, "m_ModelName", szModel, sizeof(szModel));
+		if (StrEqual(szModel, "models/props_2fort/ladder001.mdl"))
+		{
+			//Function
+			SDKHook(entity, SDKHook_StartTouch, OnStartTouch);
+		}
 	}
 }
 
@@ -128,8 +118,8 @@ public void StartTouchTrigger(const char[] name, int entity, int client, float d
 	
 	if (StrEqual(szModel, "models/props_2fort/ladder001.mdl")) 
 	{
-		iTouching[client]++;
-		if (iTouching[client] == 1) 
+		g_iTouching[client]++;
+		if (g_iTouching[client] == 1) 
 		{
 			MountLadder(client);
 		}
@@ -143,8 +133,8 @@ public void EndTouchTrigger(const char[] name, int entity, int client, float del
 	
 	if (StrEqual(szModel, "models/props_2fort/ladder001.mdl")) 
 	{
-		iTouching[client]--;
-		if (iTouching[client] <= 0) 
+		g_iTouching[client]--;
+		if (g_iTouching[client] <= 0) 
 		{
 			DismountLadder(client);
 		}
@@ -180,9 +170,9 @@ public Action OnStartTouch(int entity, int client)
 
 public Action OnEndTouch(int entity, int client)
 {
-	iTouching[client]--;
-	//PrintToChat(client, "endtouch %i", iTouching[client]);
-	if (iTouching[client] <= 0)
+	g_iTouching[client]--;
+	//PrintToChat(client, "endtouch %i", g_iTouching[client]);
+	if (g_iTouching[client] <= 0)
 	{
 		SetEntityGravity(client, 1.0);
 		SDKUnhook(client, SDKHook_PreThink, MoveOnLadder);
@@ -208,9 +198,9 @@ public Action OnTouch(int entity, int client)
 	}
 	else
 	{
-		iTouching[client]++;
-		//PrintToChat(client, "touch %i", iTouching[client]);
-		if (iTouching[client] == 1)
+		g_iTouching[client]++;
+		//PrintToChat(client, "touch %i", g_iTouching[client]);
+		if (g_iTouching[client] == 1)
 		{
 			SetEntityGravity(client, 0.001);
 			SDKHook(client, SDKHook_PreThink, MoveOnLadder);
@@ -238,8 +228,8 @@ public void MoveOnLadder(int client)
 	float origin[3];
 	GetClientAbsOrigin(client, origin);
 	
-	bool movingUp = (origin[2] > lastZ[client]);
-	lastZ[client] = origin[2];
+	bool movingUp = (origin[2] > g_flastZ[client]);
+	g_flastZ[client] = origin[2];
 	
 	float angles[3];
 	GetClientEyeAngles(client, angles);
@@ -335,43 +325,32 @@ int BuildLadder(int iBuilder, float fOrigin[3])
 		
 		TeleportEntity(iLadder, fOrigin, NULL_VECTOR, NULL_VECTOR);
 		DispatchSpawn(iLadder);
-		
-		return iLadder;
 	}
-	return 0;
+	
+	if(Build_ReturnEntityOwner(iLadder) != iBuilder)
+	{
+		if(IsValidEntity(iLadder))	AcceptEntityInput(iLadder, "kill");
+		Build_PrintToChat(iBuilder, "Fail to spawn ladder.");
+		return -1;
+	}	
+	else
+		Build_PrintToChat(iBuilder, "The ladder built.");
+		
+	return iLadder;
 }
 
 void PlayClimbSound(int client)
 {
-	if (!soundCooldown[client])
+	if (!g_bSoundCooldown[client])
 	{
 		EmitSoundToClient(client, SOUND_STEP);
 		
-		soundCooldown[client] = true;
+		g_bSoundCooldown[client] = true;
 		CreateTimer(0.35, Timer_Cooldown, client);
 	}
 }
 
 public Action Timer_Cooldown(Handle timer, any client)
 {
-	soundCooldown[client] = false;
+	g_bSoundCooldown[client] = false;
 }
-
-int GetClientSpawnedEntities(int client)
-{
-	char szClass[32];
-	int iCount = 0;
-	for (int i = MaxClients; i < MAX_HOOK_ENTITIES; i++)if (IsValidEdict(i))
-	{
-		GetEdictClassname(i, szClass, sizeof(szClass));
-		if ((StrContains(szClass, "prop_dynamic") >= 0 || StrContains(szClass, "prop_physics") >= 0) && !StrEqual(szClass, "prop_ragdoll") && Build_ReturnEntityOwner(i) == client)
-			iCount++;
-	}
-	return iCount;
-}
-
-int GetClientMaxHoldEntities()
-{
-	Handle iMax = FindConVar("sbox_maxpropsperplayer");
-	return GetConVarInt(iMax);
-} 

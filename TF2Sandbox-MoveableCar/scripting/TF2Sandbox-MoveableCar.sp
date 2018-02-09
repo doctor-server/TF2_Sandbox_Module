@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "1.1"
+#define PLUGIN_VERSION "2.5"
 
 #include <sourcemod>
 #include <sdktools>
@@ -29,14 +29,10 @@ Handle g_hHud2; //sync2
 Handle g_iSpeedlimit;
 
 bool bEnabled = true;
-bool g_bSpawnCar[MAXPLAYERS + 1] = false;
 int g_iSpawnCar[MAXPLAYERS + 1] = -1;
 
-bool g_bDispenser[MAXPLAYERS + 1] = false;
-int g_iDispenser[MAXPLAYERS + 1] = -1;
-
 float g_fCarSpeed[MAXPLAYERS + 1] = 0.0;
-
+int g_iCoolDown[MAXPLAYERS + 1] = 0;
 
 public void OnPluginStart()
 {
@@ -48,12 +44,14 @@ public void OnPluginStart()
 	g_hHud2 = CreateHudSynchronizer();
 }
 
+public void OnMapStart()
+{
+	for (int i = 1; i <= MaxClients; i++) g_iSpawnCar[i] = -1;
+}
+
 public void OnClientPutInServer(int client)
 {
-	g_bSpawnCar[client] = false;
 	g_iSpawnCar[client] = -1;
-	g_bDispenser[client] = false;
-	g_iDispenser[client] = -1;
 }
 
 /*******************************************************************************************
@@ -72,7 +70,7 @@ public Action Command_SandboxCar(int client, int args)
 		Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Car Main Menu v%s \n ", PLUGIN_VERSION);
 		menu.SetTitle(menuinfo);
 		
-		if (g_bSpawnCar[client])
+		if (IsValidEntity(g_iSpawnCar[client]))
 		{
 			Format(menuinfo, sizeof(menuinfo), " Delete the car ", client);
 			menu.AddItem("DELETECAR", menuinfo);
@@ -83,7 +81,7 @@ public Action Command_SandboxCar(int client, int args)
 			menu.AddItem("BUILDCAR", menuinfo);
 		}
 		
-		if (g_bSpawnCar[client])
+		if (IsValidEntity(g_iSpawnCar[client]))
 		{
 			Format(menuinfo, sizeof(menuinfo), " Set Colour ", client);
 			menu.AddItem("SETCOLOR", menuinfo);
@@ -92,25 +90,6 @@ public Action Command_SandboxCar(int client, int args)
 		{
 			Format(menuinfo, sizeof(menuinfo), " Set Colour ", client);
 			menu.AddItem("SETCOLOR", menuinfo, ITEMDRAW_DISABLED);
-		}
-		
-		if (g_bSpawnCar[client])
-		{
-			if (g_bDispenser[client])
-			{
-				Format(menuinfo, sizeof(menuinfo), " Delete Dispenser ", client);
-				//menu.AddItem("DELDISPENSER", menuinfo);
-			}
-			else
-			{
-				Format(menuinfo, sizeof(menuinfo), " Build Dispenser ", client);
-				//menu.AddItem("DISPENSER", menuinfo);
-			}
-		}
-		else
-		{
-			Format(menuinfo, sizeof(menuinfo), " Build Dispenser ", client);
-			//menu.AddItem("DISPENSER", menuinfo, ITEMDRAW_DISABLED);
 		}
 		
 		Format(menuinfo, sizeof(menuinfo), " How to Control the car? ", client);
@@ -131,13 +110,15 @@ public int Handler_MainMenu(Menu menu, MenuAction action, int client, int select
 		
 		if (StrEqual(info, "DELETECAR"))
 		{
-			DeleteCar(client, g_iSpawnCar[client]);
-			DeleteDispenser(client, g_iDispenser[client]);
-			g_bDispenser[client] = false;
-			g_iDispenser[client] = -1;
-			g_bSpawnCar[client] = false;
-			g_iSpawnCar[client] = -1;
+			if (IsValidEntity(g_iSpawnCar[client]))
+			{
+				AcceptEntityInput(g_iSpawnCar[client], "Kill");
+				g_iSpawnCar[client] = -1;
+				Build_SetLimit(client, -1);
+			}
+			//DeleteDispenser(client, g_iDispenser[client]);
 			Command_SandboxCar(client, -1);
+			
 		}
 		else if (StrEqual(info, "BUILDCAR"))
 		{
@@ -150,20 +131,6 @@ public int Handler_MainMenu(Menu menu, MenuAction action, int client, int select
 		else if (StrEqual(info, "CONTROL"))
 		{
 			Command_ControlCar(client, -1);
-		}
-		else if (StrEqual(info, "DISPENSER"))
-		{
-			g_iDispenser[client] = BuildDispenser(client);
-			g_bDispenser[client] = true;
-			Build_RegisterEntityOwner(g_iDispenser[client], client);
-			Command_SandboxCar(client, -1);
-		}
-		else if (StrEqual(info, "DELDISPENSER"))
-		{
-			DeleteDispenser(client, g_iDispenser[client]);
-			g_bDispenser[client] = false;
-			g_iDispenser[client] = -1;
-			Command_SandboxCar(client, -1);
 		}
 	}
 	else if (action == MenuAction_Cancel)
@@ -223,19 +190,25 @@ public int Handler_SelectMenu(Menu menu, MenuAction action, int client, int sele
 		char info[32];
 		menu.GetItem(selection, info, sizeof(info));
 		
-		g_iSpawnCar[client] = BuildCar(client, StringToInt(info));
-		
-		g_bSpawnCar[client] = true;
-		Build_RegisterEntityOwner(g_iSpawnCar[client], client);
-		
-		if (Phys_IsPhysicsObject(g_iSpawnCar[client]))
+		if(g_iCoolDown[client] == 0)
 		{
-			Phys_EnableGravity(g_iSpawnCar[client], true);
-			Phys_EnableMotion(g_iSpawnCar[client], true);
-			Phys_EnableCollisions(g_iSpawnCar[client], true);
-			Phys_EnableDrag(g_iSpawnCar[client], false);
+			g_iSpawnCar[client] = BuildCar(client, StringToInt(info));
+			
+			if(Build_ReturnEntityOwner(g_iSpawnCar[client]) != client)
+			{
+				if(IsValidEntity(g_iSpawnCar[client]))	AcceptEntityInput(g_iSpawnCar[client], "kill");
+				Build_PrintToChat(client, "Fail to spawn the car.");
+				g_iSpawnCar[client] = -1;
+			}	
+			else
+				Build_PrintToChat(client, "The car spawned.");
+				
+			g_iCoolDown[client] = 1;
+			CreateTimer(0.05, Timer_CoolDownFunction, client);
 		}
+			
 		Command_SandboxCar(client, -1);
+		
 	}
 	else if (action == MenuAction_Cancel)
 	{
@@ -338,7 +311,7 @@ public int Handler_ColorMenu(Menu menu, MenuAction action, int client, int selec
 			green = 0;
 		}
 		
-		if (IsValidEntity(g_iSpawnCar[client]) && g_bSpawnCar[client])
+		if (IsValidEntity(g_iSpawnCar[client]))
 		{
 			SetEntityRenderColor(g_iSpawnCar[client], red, green, blue, _);
 			Command_SandboxCar(client, -1);
@@ -421,14 +394,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	if (!IsValidClient(client))
 		return Plugin_Continue;
 	
-	if (!IsValidEntity(g_iSpawnCar[client]) && g_bSpawnCar[client])
-	{
-		//g_bSpawnCar[client] = false;
-		//g_iSpawnCar[client] = -1;
-	}
-	
-	
-	if (IsValidEntity(g_iSpawnCar[client]) && g_bSpawnCar[client] && Phys_IsPhysicsObject(g_iSpawnCar[client]) && Phys_IsGravityEnabled(g_iSpawnCar[client]))
+	if (IsValidEntity(g_iSpawnCar[client]) && Phys_IsPhysicsObject(g_iSpawnCar[client]) && Phys_IsGravityEnabled(g_iSpawnCar[client]))
 	{
 		int iSpeedlimit = GetConVarInt(g_iSpeedlimit);
 		float clientEye[3], fcarPosition[3], fcarAngle[3], fCarVel[3];
@@ -630,16 +596,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				ShowSyncHudText(client, g_hHud, "Hold Ctrl(DUCK) to drive the car");
 			}
 		}
-		if (g_bDispenser[client] && IsValidEntity(g_iDispenser[client]))
-		{
-			fcarPosition[2] += 85.0;
-			TeleportEntity(g_iDispenser[client], fcarPosition, NULL_VECTOR, NULL_VECTOR);
-			fcarPosition[2] -= 85.0;
-		}
 	}
 	return Plugin_Continue;
 }
-
 
 int BuildCar(int client, int model)
 {
@@ -663,7 +622,7 @@ int BuildCar(int client, int model)
 	{
 		SetEntProp(car, Prop_Send, "m_nSolidType", 6);
 		SetEntProp(car, Prop_Data, "m_nSolidType", 6);
-		
+		Build_RegisterEntityOwner(car, client);
 		PrecacheModel(strModel);
 		DispatchKeyValue(car, "model", strModel);
 		float fOrigin[3];
@@ -671,17 +630,23 @@ int BuildCar(int client, int model)
 		TeleportEntity(car, fOrigin, NULL_VECTOR, NULL_VECTOR);
 		DispatchSpawn(car);
 		
-		return car;
+		if (Phys_IsPhysicsObject(car))
+		{
+			Phys_EnableGravity(car, true);
+			Phys_EnableMotion(car, true);
+			Phys_EnableCollisions(car, true);
+			Phys_EnableDrag(car, false);
+		}
 	}
-	return -1;
+	return car;
 }
 
-void DeleteCar(int client, int carIndex)
+public Action Timer_CoolDownFunction(Handle timer, int client)
 {
-	if (IsValidEntity(carIndex) && Build_ReturnEntityOwner(carIndex) == client)
-	{
-		AcceptEntityInput(carIndex, "Kill");
-	}
+	g_iCoolDown[client] -= 1;
+	
+	if (g_iCoolDown[client] >= 1)	CreateTimer(1.0, Timer_CoolDownFunction, client);
+	else	g_iCoolDown[client] = 0;
 }
 
 int BuildDispenser(int iBuilder)
