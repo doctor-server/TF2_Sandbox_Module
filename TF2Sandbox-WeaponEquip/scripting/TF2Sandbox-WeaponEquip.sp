@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "1.1"
+#define PLUGIN_VERSION "1.2"
 
 #include <sourcemod>
 #include <sdktools>
@@ -123,7 +123,7 @@ stock int TF2_CreateGlow(int iEnt)
 		red = 255;
 		green = 255;
 		blue = 0;
-		alpha = 200;
+		alpha = 100;
 	
 		char strGlowColor[18];
 		Format(strGlowColor, sizeof(strGlowColor), "%i %i %i %i", red, green, blue, alpha);
@@ -211,7 +211,8 @@ int IsValidWeapon(int iEntity) //Return Weapon Index
 			else if(StrEqual(szModel, "models/weapons/w_models/w_syringegun.mdl")) 		return 17; //Medic
 			else if(StrEqual(szModel, "models/weapons/w_models/w_ttg_max_gun.mdl"))		return 294; //Scout    Lugermorph lol
 			else if(StrEqual(szModel, "models/weapons/w_models/w_wrangler.mdl")) 		return 140; //Engin
-			else if(StrEqual(szModel, "models/weapons/w_models/w_wrench.mdl")) 			return 7; //Engin		
+			else if(StrEqual(szModel, "models/weapons/w_models/w_wrench.mdl")) 			return 7; //Engin	
+			else if(StrEqual(szModel, "models/weapons/w_models/w_medigun.mdl"))			return 29; //Medic
 			//case ("models/weapons/w_models/w_builder.mdl"): 		return 28; //Engin
 			//case ("models/weapons/w_models/w_cigarette_case.mdl"):	return ; //Spy
 			//case ("models/weapons/w_models/w_pda_engineer.mdl"): 	return 25; //Engin
