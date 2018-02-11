@@ -16,7 +16,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "7.0"
+#define PLUGIN_VERSION "7.1"
 
 #include <sourcemod>
 #include <sdktools>
@@ -1085,7 +1085,7 @@ bool LoadProps(int loader, char szLoadString[255])
 {
 	float fOrigin[3], fAngles[3], fSize;
 	char szModel[128], szClass[64], szFormatStr[255], DoorIndex[5], szBuffer[20][255];
-	int Obj_LoadEntity, iCollision, iRed, iGreen, iBlue, iAlpha, iRenderFx, iRandom;
+	int Obj_LoadEntity, iCollision, iRed, iGreen, iBlue, iAlpha, iRenderFx, iRandom, iSkin;
 	RenderFx FxRender = RENDERFX_NONE;
 	
 	ExplodeString(szLoadString, " ", szBuffer, 20, 255);
@@ -1104,6 +1104,7 @@ bool LoadProps(int loader, char szLoadString[255])
 	iBlue = StringToInt(szBuffer[13]);
 	iAlpha = StringToInt(szBuffer[14]);
 	iRenderFx = StringToInt(szBuffer[15]);
+	iSkin = StringToInt(szBuffer[16]);
 	
 	if (strlen(szBuffer[9]) == 0)
 		iCollision = 5;
@@ -1119,6 +1120,8 @@ bool LoadProps(int loader, char szLoadString[255])
 		iAlpha = 255;
 	if (strlen(szBuffer[15]) == 0)
 		iRenderFx = 1;
+	if (strlen(szBuffer[16]) == 0)
+		iSkin = 0;
 	
 	//iHealth = StringToInt(szBuffer[9]);
 	//if (iHealth == 2)
@@ -1173,7 +1176,7 @@ bool LoadProps(int loader, char szLoadString[255])
 				case 17:FxRender = RENDERFX_HOLOGRAM;
 			}
 			SetEntityRenderFx(Obj_LoadEntity, FxRender);
-			
+			SetEntProp(Obj_LoadEntity, Prop_Send, "m_nSkin", iSkin);
 			//SetVariantInt(iHealth);
 			//AcceptEntityInput(Obj_LoadEntity, "sethealth", -1);
 			//AcceptEntityInput(Obj_LoadEntity, "disablemotion", -1);
@@ -1270,7 +1273,7 @@ void SaveData(int client, int slot) // Save Data from data file (CLIENT INDEX, S
 		
 		float fOrigin[3], fAngles[3], fSize;
 		char szModel[64], szTime[64], szClass[64];
-		int iOrigin[3], iAngles[3], iCollision, iRed, iGreen, iBlue, iAlpha, iRenderFx;
+		int iOrigin[3], iAngles[3], iCollision, iRed, iGreen, iBlue, iAlpha, iRenderFx, iSkin;
 		RenderFx EntityRenderFx;
 		
 		FormatTime(szTime, sizeof(szTime), "%Y/%m/%d");
@@ -1292,24 +1295,25 @@ void SaveData(int client, int slot) // Save Data from data file (CLIENT INDEX, S
 				EntityRenderFx = GetEntityRenderFx(i);
 				switch(EntityRenderFx)
 				{
-					case(RENDERFX_PULSE_SLOW): 	iRenderFx = 2;
-					case(RENDERFX_PULSE_FAST): 	iRenderFx = 3;
+					case(RENDERFX_PULSE_SLOW): 			iRenderFx = 2;
+					case(RENDERFX_PULSE_FAST): 			iRenderFx = 3;
 					case(RENDERFX_PULSE_SLOW_WIDE): 	iRenderFx = 4;
 					case(RENDERFX_PULSE_FAST_WIDE): 	iRenderFx = 5;
-					case(RENDERFX_FADE_SLOW): 	iRenderFx = 6;
-					case(RENDERFX_FADE_FAST):	iRenderFx = 7;
-					case(RENDERFX_SOLID_SLOW): 	iRenderFx = 8;
-					case(RENDERFX_SOLID_FAST): 	iRenderFx = 9;
-					case(RENDERFX_STROBE_SLOW): iRenderFx = 10;
-					case(RENDERFX_STROBE_FAST): iRenderFx = 11;
-					case(RENDERFX_STROBE_FASTER): 	iRenderFx = 12;
-					case(RENDERFX_FLICKER_SLOW): 	iRenderFx = 13;
-					case(RENDERFX_FLICKER_FAST): 	iRenderFx = 14;
-					case(RENDERFX_NO_DISSIPATION): 	iRenderFx = 15;
-					case(RENDERFX_DISTORT): 	iRenderFx = 16;
-					case(RENDERFX_HOLOGRAM): 	iRenderFx = 17;
+					case(RENDERFX_FADE_SLOW): 			iRenderFx = 6;
+					case(RENDERFX_FADE_FAST):			iRenderFx = 7;
+					case(RENDERFX_SOLID_SLOW): 			iRenderFx = 8;
+					case(RENDERFX_SOLID_FAST): 			iRenderFx = 9;
+					case(RENDERFX_STROBE_SLOW):		 	iRenderFx = 10;
+					case(RENDERFX_STROBE_FAST): 		iRenderFx = 11;
+					case(RENDERFX_STROBE_FASTER): 		iRenderFx = 12;
+					case(RENDERFX_FLICKER_SLOW): 		iRenderFx = 13;
+					case(RENDERFX_FLICKER_FAST): 		iRenderFx = 14;
+					case(RENDERFX_NO_DISSIPATION): 		iRenderFx = 15;
+					case(RENDERFX_DISTORT): 			iRenderFx = 16;
+					case(RENDERFX_HOLOGRAM): 			iRenderFx = 17;
 					default:	iRenderFx = 1;
-				}
+				}				
+				iSkin = GetEntProp(i, Prop_Send, "m_nSkin");
 				
 				for (int j = 0; j < 3; j++)
 				{
@@ -1325,12 +1329,12 @@ void SaveData(int client, int slot) // Save Data from data file (CLIENT INDEX, S
 				else
 					iHealth = 0;
 				*/
-				WriteFileLine(g_hFileEditting[client], "ent%i %s %s %f %f %f %f %f %f %i %f %i %i %i %i %i", g_iCountEntity, szClass, szModel, fOrigin[0], fOrigin[1], fOrigin[2], fAngles[0], fAngles[1], fAngles[2], iCollision, fSize, iRed, iGreen, iBlue, iAlpha, iRenderFx);
+				WriteFileLine(g_hFileEditting[client], "ent%i %s %s %f %f %f %f %f %f %i %f %i %i %i %i %i %i", g_iCountEntity, szClass, szModel, fOrigin[0], fOrigin[1], fOrigin[2], fAngles[0], fAngles[1], fAngles[2], iCollision, fSize, iRed, iGreen, iBlue, iAlpha, iRenderFx, iSkin);
 				g_iCountEntity++;
 			}
 		}
 		WriteFileLine(g_hFileEditting[client], ";- Data File End | %i Props Saved", g_iCountEntity);
-		WriteFileLine(g_hFileEditting[client], ";- File:TF2Sandbox-SaveSystem.smx", g_iCountEntity);
+		WriteFileLine(g_hFileEditting[client], ";- File:TF2Sandbox-SaveSystem.smx");
 		
 		FlushFile(g_hFileEditting[client]);
 		//-------------------------------------------------------------Close file-------------------------------------------------------------------
