@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "1.0"
+#define PLUGIN_VERSION "1.1"
 
 #include <sourcemod>
 #include <sdktools>
@@ -68,7 +68,11 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			SetHudTextParams(-1.0, 0.7, 0.01, 124, 252, 0, 255, 1, 6.0, 0.5, 0.5);
 			ShowSyncHudText(client, g_hHud, "Press MOUSE3 to equip the weapon");
 			
-			if(buttons & IN_ATTACK3)
+			float fClientPosition[3], fEntityOrigin[3];
+			GetClientEyePosition(client, fClientPosition);
+			GetEntPropVector(iEntity, Prop_Send, "m_vecOrigin", fEntityOrigin);
+				
+			if(GetVectorDistance(fClientPosition, fEntityOrigin) < 100.0 &&buttons & IN_ATTACK3)
 			{
 				int iWeapon;
 				for (int iSlot = 0; iSlot < 8; iSlot++) 
