@@ -10,7 +10,7 @@ https://forums.alliedmods.net/showthread.php?t=190625
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "1.6"
+#define PLUGIN_VERSION "1.7"
 #define SOUND_STEP	"player/footsteps/concrete4.wav"
 
 #include <sourcemod>
@@ -50,6 +50,7 @@ public Action OnPlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(GetEventInt(event, "userid"));
 	g_iTouching[client] = 0;
+	SetEntityGravity(client, 1.0);
 }
 
 public void OnMapStart()

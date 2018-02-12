@@ -16,7 +16,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "8.1"
+#define PLUGIN_VERSION "8.2"
 
 #include <sourcemod>
 #include <sdktools>
@@ -1380,7 +1380,7 @@ bool LoadProps(int loader, char[] szLoadString)
 			}
 			SetEntityRenderFx(Obj_LoadEntity, FxRender);
 			SetEntProp(Obj_LoadEntity, Prop_Send, "m_nSkin", iSkin);
-
+			SetEntPropString(Obj_LoadEntity, Prop_Data, "m_iName", szName);
 			//SetVariantInt(iHealth);
 			//AcceptEntityInput(Obj_LoadEntity, "sethealth", -1);
 			//AcceptEntityInput(Obj_LoadEntity, "disablemotion", -1);
@@ -1451,7 +1451,6 @@ bool LoadProps(int loader, char[] szLoadString)
 				Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,RavenDoor_Drop,7", DoorIndex);
 				DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
 			}
-			SetEntPropString(Obj_LoadEntity, Prop_Data, "m_iName", szName);
 			
 			return true;
 		}
