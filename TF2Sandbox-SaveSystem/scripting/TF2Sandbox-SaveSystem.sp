@@ -16,7 +16,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "7.1"
+#define PLUGIN_VERSION "8.1"
 
 #include <sourcemod>
 #include <sdktools>
@@ -57,11 +57,24 @@ bool g_bWaitingForPlayers;
 int g_iCoolDown[MAXPLAYERS + 1] = 0;
 int g_iSelectedClient[MAXPLAYERS + 1];
 
+//Cloud
+char dbconfig[] = "SaveSystem";
+Database g_DB;
+
+int g_iCloudRow[MAXPLAYERS + 1];
+bool g_SqlRunning = false;
+//------------
+
 /*******************************************************************************************
 	Start
 *******************************************************************************************/
 public void OnPluginStart()
 {
+	char error[255];
+	g_DB = SQL_Connect(dbconfig, true, error, sizeof(error));
+	if(g_DB != INVALID_HANDLE)
+		SQL_SetCharset(g_DB, "utf8");
+	
 	CreateConVar("sm_tf2sb_ss_version", PLUGIN_VERSION, "", FCVAR_SPONLY | FCVAR_NOTIFY);
 	
 	cvg_iCoolDownsec = CreateConVar("sm_tf2sb_ss_cooldownsec", "2", "(1 - 50) Set CoolDown seconds to prevent flooding.", 0, true, 1.0, true, 50.0);
@@ -156,7 +169,7 @@ public void OnMapStart()
 		OnClientPutInServer(i);
 	
 	CreateTimer(GetConVarFloat(cviAdvertisement), Timer_Ads, 0, TIMER_FLAG_NO_MAPCHANGE);
-	CreateTimer(6.0, Timer_LoadMap, 0, TIMER_FLAG_NO_MAPCHANGE);
+	CreateTimer(3.0, Timer_LoadMap, 0, TIMER_FLAG_NO_MAPCHANGE);
 }
 
 public void OnClientPutInServer(int client)
@@ -167,7 +180,7 @@ public void OnClientPutInServer(int client)
 	
 	//Cache system
 	g_bIsClientInServer[client] = true;
-	CreateTimer(10.0, Timer_Load, client);
+	CreateTimer(5.0, Timer_Load, client);
 	//------------
 }
 
@@ -361,7 +374,10 @@ public Action Command_MainMenu(int client, int args)
 		Format(menuinfo, sizeof(menuinfo), " Check Cache System... ", client);
 		menu.AddItem("CACHE", menuinfo);
 		
-		menu.ExitBackButton = true;
+		Format(menuinfo, sizeof(menuinfo), " Connect to Cloud Storage(Test)... ", client);
+		menu.AddItem("CLOUD", menuinfo);
+		
+		menu.ExitBackButton = false;
 		menu.ExitButton = true;
 		menu.Display(client, MENU_TIME_FOREVER);
 	}
@@ -387,6 +403,16 @@ public int Handler_MainMenu(Menu menu, MenuAction action, int client, int select
 			Command_LoadOthersMenu(client, -1);
 		else if (StrEqual(info, "CACHE"))
 			Command_CheckCacheMenu(client, -1);
+		else if (StrEqual(info, "CLOUD"))
+		{
+			Handle dp;
+			CreateDataTimer(0.1, Timer_SqlRunning, dp);
+			WritePackCell(dp, client);
+			WritePackCell(dp, 0);
+			WritePackCell(dp, 25);
+			g_SqlRunning = true;
+			Command_CloudMenu(client, -1);
+		}
 	}
 	else if (action == MenuAction_Cancel)
 	{
@@ -937,6 +963,180 @@ public int Handler_CheckCacheMenu(Menu menu, MenuAction action, int client, int 
 		delete menu;
 }
 
+/*******************************************************************************************
+	 8. Cloud Storage Menu
+*******************************************************************************************/
+public Action Command_CloudMenu(int client, int args)
+{
+	if (g_bEnabled)
+	{
+		char ConnectionStatus[32] = "Disconnected";
+		if(g_DB != INVALID_HANDLE) //thx https://editor.datatables.net/generator/
+		{
+			char SteamID[32];
+			GetClientSteamID(client, SteamID);
+			char createTableQuery[4096];
+			Format(createTableQuery, sizeof(createTableQuery), 
+				"CREATE TABLE IF NOT EXISTS `%s` ( \
+				`id` int(10) NOT NULL auto_increment, \
+				`szclass` varchar(255), \
+				`szmodel` varchar(255), \
+				`forigin0` numeric(15,6), \
+				`forigin1` numeric(15,6), \
+				`forigin2` numeric(15,6), \
+				`fangles0` numeric(9,6), \
+				`fangles1` numeric(9,6), \
+				`fangles2` numeric(9,6), \
+				`icollision` numeric(2,0), \
+				`fsize` numeric(9,6), \
+				`ired` numeric(3,0), \
+				`igreen` numeric(3,0), \
+				`iblue` numeric(3,0), \
+				`ialpha` numeric(3,0), \
+				`irenderfx` numeric(2,0), \
+				`iskin` numeric(3,0), \
+				`szname` varchar(255), \
+				`reserved1` varchar(255), \
+				`reserved2` varchar(255), \
+				`reserved3` varchar(255), \
+				`reserved4` varchar(255), \
+				`reserved5` varchar(255), \
+				PRIMARY KEY( `id` ));"
+			, SteamID);
+			SQL_TQuery(g_DB, SQLErrorCheckCallback, createTableQuery);
+			ConnectionStatus = "Connected";
+		}
+		
+		char menuinfo[255];
+		Menu menu = new Menu(Handler_CloudMenu);
+		
+		if(g_SqlRunning)
+			Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Cloud Storage %s \n \nDatabase Connection:\n [ %s ] --- Loading~\n ", PLUGIN_VERSION, ConnectionStatus);
+		else
+			Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Cloud Storage %s \n \nDatabase Connection:\n [ %s ]\n ", PLUGIN_VERSION, ConnectionStatus);
+		menu.SetTitle(menuinfo);
+		
+		Format(menuinfo, sizeof(menuinfo), " Refresh");
+		if(g_SqlRunning)
+		{
+			menu.AddItem("REFRESH", menuinfo, ITEMDRAW_DISABLED);
+		}
+		else
+		{
+			menu.AddItem("REFRESH", menuinfo);
+		}
+		
+		Sql_GetRow(client);
+		Format(menuinfo, sizeof(menuinfo), " Storage (%i Props)", g_iCloudRow[client]);
+		menu.AddItem("", menuinfo, ITEMDRAW_DISABLED);
+		
+		if(g_DB == INVALID_HANDLE || g_SqlRunning)
+		{
+			Format(menuinfo, sizeof(menuinfo), " Load... ");
+			menu.AddItem("LOAD", menuinfo, ITEMDRAW_DISABLED);	
+			Format(menuinfo, sizeof(menuinfo), " Save... ");
+			menu.AddItem("SAVE", menuinfo, ITEMDRAW_DISABLED);		
+			Format(menuinfo, sizeof(menuinfo), " Delete... ");
+			menu.AddItem("DELETE", menuinfo, ITEMDRAW_DISABLED);
+		}
+		else
+		{
+			if(g_iCloudRow[client] > 0)
+			{
+				Format(menuinfo, sizeof(menuinfo), " Load... ");
+				menu.AddItem("LOAD", menuinfo);			
+				Format(menuinfo, sizeof(menuinfo), " Save... ");
+				menu.AddItem("SAVE", menuinfo, ITEMDRAW_DISABLED);		
+				Format(menuinfo, sizeof(menuinfo), " Delete... ");
+				menu.AddItem("DELETE", menuinfo);
+			}
+			else
+			{
+				Format(menuinfo, sizeof(menuinfo), " Load... ");
+				menu.AddItem("LOAD", menuinfo, ITEMDRAW_DISABLED);			
+				Format(menuinfo, sizeof(menuinfo), " Save... ");
+				menu.AddItem("SAVE", menuinfo);	
+				Format(menuinfo, sizeof(menuinfo), " Delete... ");
+				menu.AddItem("DELETE", menuinfo, ITEMDRAW_DISABLED);
+			}
+		}
+		
+		if(g_SqlRunning)	menu.ExitBackButton = false;
+		else	menu.ExitBackButton = true;
+		menu.ExitButton = false;
+		menu.Display(client, MENU_TIME_FOREVER);
+	}
+	return Plugin_Handled;
+}
+
+public int Handler_CloudMenu(Menu menu, MenuAction action, int client, int selection)
+{
+	if (action == MenuAction_Select)
+	{
+		char info[32];
+		menu.GetItem(selection, info, sizeof(info));
+		
+		Sql_GetRow(client);
+		if (StrEqual("REFRESH", info))
+		{
+			Handle dp;
+			CreateDataTimer(0.1, Timer_SqlRunning, dp);
+			WritePackCell(dp, client);
+			WritePackCell(dp, 0);
+			WritePackCell(dp, 10);
+			g_SqlRunning = true;
+		}
+		else if(StrEqual("LOAD", info) && !g_SqlRunning)
+		{
+			Sql_LoadData(client);
+			Handle dp;
+			CreateDataTimer(0.1, Timer_SqlRunning, dp);
+			WritePackCell(dp, client);
+			WritePackCell(dp, 0);
+			WritePackCell(dp, 20);
+			g_SqlRunning = true;
+		}
+		else if(StrEqual("SAVE", info) && !g_SqlRunning)
+		{
+			int iCount = 0;
+			char szClass[64];
+			for (int i = MaxClients; i < MAX_HOOK_ENTITIES; i++)if (IsValidEdict(i))
+			{
+				GetEdictClassname(i, szClass, sizeof(szClass));
+				if ((StrContains(szClass, "prop_dynamic") >= 0 || StrContains(szClass, "prop_physics") >= 0) && !StrEqual(szClass, "prop_ragdoll") && Build_ReturnEntityOwner(i) == client)
+				{
+					iCount++;
+				}
+			}
+			Sql_SaveData(client);
+			Handle dp;
+			CreateDataTimer(0.1, Timer_SqlRunning, dp);
+			WritePackCell(dp, client);
+			WritePackCell(dp, iCount);
+			WritePackCell(dp, -1);
+			g_SqlRunning = true;
+		}
+		else if(StrEqual("DELETE", info) && !g_SqlRunning)
+		{
+			Sql_DeleteData(client);
+			Handle dp;
+			CreateDataTimer(0.1, Timer_SqlRunning, dp);
+			WritePackCell(dp, client);
+			WritePackCell(dp, 0);
+			WritePackCell(dp, -1);
+			g_SqlRunning = true;
+		}
+		Command_CloudMenu(client, 0);
+	}
+	else if (action == MenuAction_Cancel)
+	{
+		if (selection == MenuCancel_ExitBack)
+			Command_MainMenu(client, -1);
+	}
+	else if (action == MenuAction_End)
+		delete menu;
+}
+
 
 /*******************************************************************************************
 	 Stock
@@ -1043,7 +1243,7 @@ public Action Timer_LoadProps(Handle timer, Handle dp)
 			for (int i = 0; i < GetConVarInt(cviLoadProps); i++)if (ReadFileLine(g_hFileEditting[loader], szLoadString, sizeof(szLoadString)))
 			{
 				Fileline++;
-				if (StrContains(szLoadString, "ent") != -1 && StrContains(szLoadString, ";") == -1) //Map name have ent sytax??? Holy
+				if (StrContains(szLoadString, "ent") != -1 && StrContains(szLoadString, "models/") != -1 && StrContains(szLoadString, "prop_") != -1)// && StrContains(szLoadString, ";") == -1) //Map name have ent sytax??? Holy
 				{
 					if (LoadProps(loader, szLoadString))
 						g_iCountEntity++;
@@ -1081,10 +1281,10 @@ public Action Timer_LoadProps(Handle timer, Handle dp)
 	}
 }
 
-bool LoadProps(int loader, char szLoadString[255])
+bool LoadProps(int loader, char[] szLoadString)
 {
 	float fOrigin[3], fAngles[3], fSize;
-	char szModel[128], szClass[64], szFormatStr[255], DoorIndex[5], szBuffer[20][255];
+	char szModel[128], szClass[64], szFormatStr[255], DoorIndex[5], szBuffer[20][255], szName[128];
 	int Obj_LoadEntity, iCollision, iRed, iGreen, iBlue, iAlpha, iRenderFx, iRandom, iSkin;
 	RenderFx FxRender = RENDERFX_NONE;
 	
@@ -1105,7 +1305,8 @@ bool LoadProps(int loader, char szLoadString[255])
 	iAlpha = StringToInt(szBuffer[14]);
 	iRenderFx = StringToInt(szBuffer[15]);
 	iSkin = StringToInt(szBuffer[16]);
-	
+	Format(szName, sizeof(szName), "%s", szBuffer[17]);
+
 	if (strlen(szBuffer[9]) == 0)
 		iCollision = 5;
 	if (strlen(szBuffer[10]) == 0)
@@ -1122,6 +1323,8 @@ bool LoadProps(int loader, char szLoadString[255])
 		iRenderFx = 1;
 	if (strlen(szBuffer[16]) == 0)
 		iSkin = 0;
+	if (strlen(szBuffer[17]) == 0)
+		szName = "";
 	
 	//iHealth = StringToInt(szBuffer[9]);
 	//if (iHealth == 2)
@@ -1177,6 +1380,7 @@ bool LoadProps(int loader, char szLoadString[255])
 			}
 			SetEntityRenderFx(Obj_LoadEntity, FxRender);
 			SetEntProp(Obj_LoadEntity, Prop_Send, "m_nSkin", iSkin);
+
 			//SetVariantInt(iHealth);
 			//AcceptEntityInput(Obj_LoadEntity, "sethealth", -1);
 			//AcceptEntityInput(Obj_LoadEntity, "disablemotion", -1);
@@ -1247,6 +1451,7 @@ bool LoadProps(int loader, char szLoadString[255])
 				Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,RavenDoor_Drop,7", DoorIndex);
 				DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
 			}
+			SetEntPropString(Obj_LoadEntity, Prop_Data, "m_iName", szName);
 			
 			return true;
 		}
@@ -1272,7 +1477,7 @@ void SaveData(int client, int slot) // Save Data from data file (CLIENT INDEX, S
 		g_iCountEntity = 0;
 		
 		float fOrigin[3], fAngles[3], fSize;
-		char szModel[64], szTime[64], szClass[64];
+		char szModel[64], szTime[64], szClass[64], szName[128];
 		int iOrigin[3], iAngles[3], iCollision, iRed, iGreen, iBlue, iAlpha, iRenderFx, iSkin;
 		RenderFx EntityRenderFx;
 		
@@ -1314,6 +1519,7 @@ void SaveData(int client, int slot) // Save Data from data file (CLIENT INDEX, S
 					default:	iRenderFx = 1;
 				}				
 				iSkin = GetEntProp(i, Prop_Send, "m_nSkin");
+				GetEntPropString(i, Prop_Data, "m_iName", szName, sizeof(szName));
 				
 				for (int j = 0; j < 3; j++)
 				{
@@ -1329,7 +1535,7 @@ void SaveData(int client, int slot) // Save Data from data file (CLIENT INDEX, S
 				else
 					iHealth = 0;
 				*/
-				WriteFileLine(g_hFileEditting[client], "ent%i %s %s %f %f %f %f %f %f %i %f %i %i %i %i %i %i", g_iCountEntity, szClass, szModel, fOrigin[0], fOrigin[1], fOrigin[2], fAngles[0], fAngles[1], fAngles[2], iCollision, fSize, iRed, iGreen, iBlue, iAlpha, iRenderFx, iSkin);
+				WriteFileLine(g_hFileEditting[client], "ent%i %s %s %f %f %f %f %f %f %i %f %i %i %i %i %i %i %s", g_iCountEntity, szClass, szModel, fOrigin[0], fOrigin[1], fOrigin[2], fAngles[0], fAngles[1], fAngles[2], iCollision, fSize, iRed, iGreen, iBlue, iAlpha, iRenderFx, iSkin, szName);
 				g_iCountEntity++;
 			}
 		}
@@ -1501,3 +1707,195 @@ int GetClientInGame()
 	
 	return iCount;
 }
+
+//------------[ Cloud ]------------------------------------------------------------------
+public void SQLErrorCheckCallback(Handle owner, Handle hndl, const char[] error, any data) 
+{
+	if (!StrEqual(error, ""))
+		LogError(error);
+}
+
+//GetRow (How many props)----------
+public void Sql_GetRow(int client)
+{
+	if(g_DB != INVALID_HANDLE)
+	{
+		char SteamID[18];
+		GetClientSteamID(client, SteamID);
+		char GetRowQuery[1024];
+		Format(GetRowQuery, sizeof(GetRowQuery), "SELECT * FROM `%s`;", SteamID);
+		SQL_TQuery(g_DB, SQLGetRowQuery, GetRowQuery, client);
+	}
+}
+
+public void SQLGetRowQuery(Handle owner, Handle hndl, const char[] error, any data) 
+{
+	g_iCloudRow[data] = SQL_GetRowCount(hndl);
+}
+//--------------------------------
+
+//Sql_LoadData--------------------
+public void Sql_LoadData(int client)
+{
+	if(g_DB != INVALID_HANDLE)
+	{
+		char SteamID[18];
+		GetClientSteamID(client, SteamID);
+		char GetData[1024];
+		for (int i = 1; i < 500; i++)
+		{
+			Format(GetData, sizeof(GetData), "SELECT * FROM `%s` WHERE id = '%i';", SteamID, i);
+			SQL_TQuery(g_DB, SQLLoadQuery, GetData, client);
+		}
+		
+	}
+}
+
+public void SQLLoadQuery(Handle owner, Handle hndl, const char[] error, any data) 
+{
+	float fOrigin[3], fAngles[3], fSize;
+	char szModel[128], szClass[64], szName[128];
+	int iCollision, iRed, iGreen, iBlue, iAlpha, iRenderFx, iSkin;
+	char szLoadString[1024];
+	while (SQL_FetchRow(hndl))
+	{
+		SQL_FetchString(hndl, 1, szClass, sizeof(szClass));
+		SQL_FetchString(hndl, 2, szModel, sizeof(szModel));
+		fOrigin[0] = SQL_FetchFloat(hndl, 3);
+		fOrigin[1] = SQL_FetchFloat(hndl, 4);
+		fOrigin[2] = SQL_FetchFloat(hndl, 5);
+		fAngles[0] = SQL_FetchFloat(hndl, 6);
+		fAngles[1] = SQL_FetchFloat(hndl, 7);
+		fAngles[2] = SQL_FetchFloat(hndl, 8);
+		iCollision = SQL_FetchInt(hndl, 9);
+		fSize = SQL_FetchFloat(hndl, 10);
+		iRed = SQL_FetchInt(hndl, 11);
+		iGreen = SQL_FetchInt(hndl, 12);
+		iBlue = SQL_FetchInt(hndl, 13);
+		iAlpha = SQL_FetchInt(hndl, 14);
+		iRenderFx = SQL_FetchInt(hndl, 15);
+		iSkin = SQL_FetchInt(hndl, 16);
+		SQL_FetchString(hndl, 17, szName, sizeof(szName));
+	}
+	Format(szLoadString, sizeof(szLoadString), "ent %s %s %f %f %f %f %f %f %i %f %i %i %i %i %i %i %s %s %s %s %s %s", szClass, szModel, fOrigin[0], fOrigin[1], fOrigin[2], fAngles[0], fAngles[1], fAngles[2], iCollision, fSize, iRed, iGreen, iBlue, iAlpha, iRenderFx, iSkin, szName, "", "", "", "","");
+	if(LoadProps(data, szLoadString))
+	{
+		
+	}
+}
+//--------------------------------
+
+//Sql_SaveData--------------------
+public void Sql_SaveData(int client)
+{
+	if(g_DB != INVALID_HANDLE)
+	{
+		char SteamID[18];
+		GetClientSteamID(client, SteamID);
+		char GetData[1024];
+		float fOrigin[3], fAngles[3], fSize;
+		char szModel[64], szClass[64], szName[128];
+		int iCollision, iRed, iGreen, iBlue, iAlpha, iRenderFx, iSkin;
+		RenderFx EntityRenderFx;
+		for (int i = MaxClients; i < MAX_HOOK_ENTITIES; i++)if (IsValidEdict(i))
+		{
+			GetEdictClassname(i, szClass, sizeof(szClass));
+			if ((StrContains(szClass, "prop_dynamic") >= 0 || StrContains(szClass, "prop_physics") >= 0) && !StrEqual(szClass, "prop_ragdoll") && Build_ReturnEntityOwner(i) == client)
+			{
+				GetEntPropString(i, Prop_Data, "m_ModelName", szModel, sizeof(szModel));
+				GetEntPropVector(i, Prop_Send, "m_vecOrigin", fOrigin);
+				GetEntPropVector(i, Prop_Data, "m_angRotation", fAngles);
+				iCollision = GetEntProp(i, Prop_Data, "m_CollisionGroup", 4);
+				fSize = GetEntPropFloat(i, Prop_Send, "m_flModelScale");
+				GetEntityRenderColor(i, iRed, iGreen, iBlue, iAlpha);
+				EntityRenderFx = GetEntityRenderFx(i);
+				switch(EntityRenderFx)
+				{
+					case(RENDERFX_PULSE_SLOW): 			iRenderFx = 2;
+					case(RENDERFX_PULSE_FAST): 			iRenderFx = 3;
+					case(RENDERFX_PULSE_SLOW_WIDE): 	iRenderFx = 4;
+					case(RENDERFX_PULSE_FAST_WIDE): 	iRenderFx = 5;
+					case(RENDERFX_FADE_SLOW): 			iRenderFx = 6;
+					case(RENDERFX_FADE_FAST):			iRenderFx = 7;
+					case(RENDERFX_SOLID_SLOW): 			iRenderFx = 8;
+					case(RENDERFX_SOLID_FAST): 			iRenderFx = 9;
+					case(RENDERFX_STROBE_SLOW):		 	iRenderFx = 10;
+					case(RENDERFX_STROBE_FAST): 		iRenderFx = 11;
+					case(RENDERFX_STROBE_FASTER): 		iRenderFx = 12;
+					case(RENDERFX_FLICKER_SLOW): 		iRenderFx = 13;
+					case(RENDERFX_FLICKER_FAST): 		iRenderFx = 14;
+					case(RENDERFX_NO_DISSIPATION): 		iRenderFx = 15;
+					case(RENDERFX_DISTORT): 			iRenderFx = 16;
+					case(RENDERFX_HOLOGRAM): 			iRenderFx = 17;
+					default:	iRenderFx = 1;
+				}				
+				iSkin = GetEntProp(i, Prop_Send, "m_nSkin");
+				GetEntPropString(i, Prop_Data, "m_iName", szName, sizeof(szName));
+				
+				/*
+				iHealth = GetEntProp(i, Prop_Data, "m_iHealth", 4);
+				if (iHealth > 100000000)
+					iHealth = 2;
+				else if (iHealth > 0)
+					iHealth = 1;
+				else
+					iHealth = 0;
+				*/
+				Format(GetData, sizeof(GetData), "INSERT IGNORE INTO `%s` (`id`, `szclass`, `szmodel`, `forigin0`, `forigin1`, `forigin2`, `fangles0`, `fangles1`, `fangles2`, `icollision`, `fsize`, `ired`, `igreen`, `iblue`, `ialpha`, `irenderfx`, `iskin`, `szname`, `reserved1`, `reserved2`, `reserved3`, `reserved4`, `reserved5`) VALUES (NULL, '%s', '%s', '%f', '%f', '%f', '%f', '%f', '%f', '%i', '%f', '%i', '%i', '%i', '%i', '%i', '%i', '%s', '%s', '%s', '%s', '%s', '%s');", SteamID, szClass, szModel, fOrigin[0], fOrigin[1], fOrigin[2], fAngles[0], fAngles[1], fAngles[2], iCollision, fSize, iRed, iGreen, iBlue, iAlpha, iRenderFx, iSkin, szName, "", "", "", "","");
+				SQL_TQuery(g_DB, SQLErrorCheckCallback, GetData, client);
+			}
+		}
+	}
+}
+//--------------------------------
+
+//Sql_DeleteData--------------------
+bool Sql_DeleteData(int client)
+{
+	if(g_DB != INVALID_HANDLE)
+	{
+		char SteamID[18];
+		GetClientSteamID(client, SteamID);
+		char GetRowQuery[1024];
+		Format(GetRowQuery, sizeof(GetRowQuery), "DROP TABLE `%s`;", SteamID);
+		SQL_TQuery(g_DB, SQLGetRowQuery, GetRowQuery, client);
+	}
+}
+//--------------------------------
+
+//Check the data is changed or not, if not, wait
+public Action Timer_SqlRunning(Handle timer, Handle dp)
+{
+	ResetPack(dp);
+	int client = ReadPackCell(dp);
+	int iCount = ReadPackCell(dp);
+	int iType = ReadPackCell(dp);
+	
+	if(g_iCloudRow[client] == iCount && iType == -1)
+	{
+		g_SqlRunning = false;
+		Command_CloudMenu(client, 0);
+	}
+	else if(iType == -1)
+	{
+		CreateDataTimer(0.1, Timer_SqlRunning, dp);
+		WritePackCell(dp, client);
+		WritePackCell(dp, iCount);
+		WritePackCell(dp, iType);
+	}
+	else if(iType > 0)
+	{
+		iType--;
+		CreateDataTimer(0.1, Timer_SqlRunning, dp);
+		WritePackCell(dp, client);
+		WritePackCell(dp, iCount);
+		WritePackCell(dp, iType);
+	}
+	else 
+	{
+		g_SqlRunning = false;
+		Command_CloudMenu(client, 0);
+	}
+}
+
+//---------------------------------------------------------------------------------------

@@ -46,7 +46,9 @@ public void OnEntityCreated(int entity, const char[] classname)
 	if (IsValidEdict(entity) && StrContains(classname, "prop_dynamic") >= 0)	CreateTimer(0.1, Timer_WeaponSpawn, entity);
 }
 
-
+public void OnEntityDestroyed(int entity)
+{
+}
 
 public Action Timer_WeaponSpawn(Handle timer, int entity)
 {
@@ -63,43 +65,46 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		int iEntity = Build_ClientAimEntity(client, false);
 		int iEntityIndex = IsValidWeapon(iEntity);
 		
-		if(iEntityIndex != -1)
+		if(IsValidEntity(iEntity) && iEntityIndex != -1)
 		{
-			SetHudTextParams(-1.0, 0.7, 0.01, 124, 252, 0, 255, 1, 6.0, 0.5, 0.5);
-			ShowSyncHudText(client, g_hHud, "Press MOUSE3 to equip the weapon");
-			
 			float fClientPosition[3], fEntityOrigin[3];
 			GetClientEyePosition(client, fClientPosition);
 			GetEntPropVector(iEntity, Prop_Send, "m_vecOrigin", fEntityOrigin);
 				
-			if(GetVectorDistance(fClientPosition, fEntityOrigin) < 100.0 &&buttons & IN_ATTACK3)
+			if(GetVectorDistance(fClientPosition, fEntityOrigin) < 175.0)
 			{
-				int iWeapon;
-				for (int iSlot = 0; iSlot < 8; iSlot++) 
-    			{ 
-    				iWeapon = GetPlayerWeaponSlot(client, iSlot);
-    				if(IsValidEntity(iWeapon) && iEntityIndex == GetEntProp(iWeapon, Prop_Send, "m_iItemDefinitionIndex"))
-    				{
-	    				SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iWeapon);
-	    				return Plugin_Continue;
-    				}
-    			}
-				if(TF2Items_CheckWeapon(iEntityIndex))
+				SetHudTextParams(-1.0, 0.7, 0.01, 124, 252, 0, 255, 1, 6.0, 0.5, 0.5);
+				ShowSyncHudText(client, g_hHud, "Press MOUSE3 to equip the weapon");
+				
+				if(buttons & IN_ATTACK3)
 				{
-					TF2Items_GiveWeapon(client, iEntityIndex);
+					int iWeapon;
 					for (int iSlot = 0; iSlot < 8; iSlot++) 
 	    			{ 
 	    				iWeapon = GetPlayerWeaponSlot(client, iSlot);
 	    				if(IsValidEntity(iWeapon) && iEntityIndex == GetEntProp(iWeapon, Prop_Send, "m_iItemDefinitionIndex"))
 	    				{
-	    					int iActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
-	    					if(GetEntProp(iActiveWeapon, Prop_Send, "m_iItemDefinitionIndex") == iEntityIndex)
-	    					{
-	    						SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iWeapon);
-	    					}
-	    					break;
+		    				SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iWeapon);
+		    				return Plugin_Continue;
 	    				}
 	    			}
+					if(TF2Items_CheckWeapon(iEntityIndex))
+					{
+						TF2Items_GiveWeapon(client, iEntityIndex);
+						for (int iSlot = 0; iSlot < 8; iSlot++) 
+		    			{ 
+		    				iWeapon = GetPlayerWeaponSlot(client, iSlot);
+		    				if(IsValidEntity(iWeapon) && iEntityIndex == GetEntProp(iWeapon, Prop_Send, "m_iItemDefinitionIndex"))
+		    				{
+		    					int iActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+		    					if(GetEntProp(iActiveWeapon, Prop_Send, "m_iItemDefinitionIndex") == iEntityIndex)
+		    					{
+		    						SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iWeapon);
+		    					}
+		    					break;
+		    				}
+		    			}
+					}
 				}
 			}
 			
@@ -113,6 +118,9 @@ stock int TF2_CreateGlow(int iEnt)
 {
 	if(!TF2_HasGlow(iEnt))
 	{
+		char oldEntName[64];
+		GetEntPropString(iEnt, Prop_Data, "m_iName", oldEntName, sizeof(oldEntName));
+		
 		char strName[126], strClass[64];
 		int red, green, blue, alpha;
 	
@@ -123,7 +131,7 @@ stock int TF2_CreateGlow(int iEnt)
 		red = 255;
 		green = 255;
 		blue = 0;
-		alpha = 100;
+		alpha = 120;
 	
 		char strGlowColor[18];
 		Format(strGlowColor, sizeof(strGlowColor), "%i %i %i %i", red, green, blue, alpha);
@@ -138,6 +146,9 @@ stock int TF2_CreateGlow(int iEnt)
 			DispatchSpawn(ent);
 	
 			AcceptEntityInput(ent, "Enable");
+			
+			//Change name back to old name because we don't need it anymore.
+			SetEntPropString(iEnt, Prop_Data, "m_iName", oldEntName);
 			return ent;
 		}
 	}
