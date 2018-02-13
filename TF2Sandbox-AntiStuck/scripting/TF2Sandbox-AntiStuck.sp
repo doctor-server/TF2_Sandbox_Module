@@ -29,6 +29,16 @@ public void OnPluginStart()
 	g_hEnabled = CreateConVar("sm_tf2sb_antistuck", "1", "Enable the AntiStuck System?", 0, true, 0.0, true, 1.0);
 }
 
+public void OnMapStart()
+{
+	TagsCheck("SandBox_Addons");
+}
+
+public void OnConfigsExecuted()
+{
+	TagsCheck("SandBox_Addons");
+}
+
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon)
 {
 	if (GetConVarBool(g_hEnabled))
@@ -88,3 +98,19 @@ stock void PropEnableCollision(int ent)
 	AcceptEntityInput(ent, "EnableCollision");
 }
 */
+
+void TagsCheck(const char[] tag) //TF2Stat.sp
+{
+	Handle hTags = FindConVar("sv_tags");
+	char tags[255];
+	GetConVarString(hTags, tags, sizeof(tags));
+
+	if (!(StrContains(tags, tag, false)>-1))
+	{
+		char newTags[255];
+		Format(newTags, sizeof(newTags), "%s,%s", tags, tag);
+		SetConVarString(hTags, newTags);
+		GetConVarString(hTags, tags, sizeof(tags));
+	}
+	CloseHandle(hTags);
+}

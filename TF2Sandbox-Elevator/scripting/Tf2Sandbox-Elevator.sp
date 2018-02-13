@@ -56,6 +56,12 @@ public void OnMapStart()
 		g_iElevatorIndex[i][0] = -1;
 		g_iElevatorIndex[i][1] = -1;
 	}
+	TagsCheck("SandBox_Addons");
+}
+
+public void OnConfigsExecuted()
+{
+	TagsCheck("SandBox_Addons");
 }
 
 public void OnClientPutInServer(int client)
@@ -453,4 +459,20 @@ public bool TraceRayHitOnlyEnt(int entity, int contentsMask)
 		}
 	}
 	return false;
+}
+
+void TagsCheck(const char[] tag) //TF2Stat.sp
+{
+	Handle hTags = FindConVar("sv_tags");
+	char tags[255];
+	GetConVarString(hTags, tags, sizeof(tags));
+
+	if (!(StrContains(tags, tag, false)>-1))
+	{
+		char newTags[255];
+		Format(newTags, sizeof(newTags), "%s,%s", tags, tag);
+		SetConVarString(hTags, newTags);
+		GetConVarString(hTags, tags, sizeof(tags));
+	}
+	CloseHandle(hTags);
 }

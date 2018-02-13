@@ -16,7 +16,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "8.2"
+#define PLUGIN_VERSION "8.3a"
 
 #include <sourcemod>
 #include <sdktools>
@@ -170,6 +170,12 @@ public void OnMapStart()
 	
 	CreateTimer(GetConVarFloat(cviAdvertisement), Timer_Ads, 0, TIMER_FLAG_NO_MAPCHANGE);
 	CreateTimer(3.0, Timer_LoadMap, 0, TIMER_FLAG_NO_MAPCHANGE);
+	TagsCheck("SandBox_Addons");
+}
+
+public void OnConfigsExecuted()
+{
+	TagsCheck("SandBox_Addons");
 }
 
 public void OnClientPutInServer(int client)
@@ -1414,9 +1420,14 @@ bool LoadProps(int loader, char[] szLoadString)
 					TeleportEntity(Obj_LightDynamic, fOrigin, fAngles, NULL_VECTOR);
 					
 					char szNameMelon[64];
-					Format(szNameMelon, sizeof(szNameMelon), "Obj_LoadEntity%i", GetRandomInt(1000, 5000));
-					DispatchKeyValue(Obj_LoadEntity, "targetname", szNameMelon);
-					SetVariantString(szNameMelon);
+					if (strlen(szBuffer[17]) == 0)
+					{
+						Format(szNameMelon, sizeof(szNameMelon), "Obj_LoadEntity%i", GetRandomInt(1000, 5000));
+						DispatchKeyValue(Obj_LoadEntity, "targetname", szNameMelon);
+						SetVariantString(szNameMelon);
+					}
+					else SetEntPropString(Obj_LoadEntity, Prop_Data, "m_iName", szName);
+					
 					AcceptEntityInput(Obj_LightDynamic, "setparent", -1);
 					AcceptEntityInput(Obj_LightDynamic, "turnon", loader, loader);
 				}
@@ -1425,31 +1436,56 @@ bool LoadProps(int loader, char[] szLoadString)
 			//door
 			if (StrEqual(szModel, "models/props_lab/blastdoor001c.mdl"))
 			{
-				iRandom = GetRandomInt(1000, 5000);
-				IntToString(iRandom, DoorIndex, sizeof(DoorIndex));
-				Format(szFormatStr, sizeof(szFormatStr), "door%s", DoorIndex);
-				DispatchKeyValue(Obj_LoadEntity, "targetname", szFormatStr);
-				
-				Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,dog_open,0", DoorIndex);
-				DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-				Format(szFormatStr, sizeof(szFormatStr), "door%s,DisableCollision,,1", DoorIndex);
-				DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-				Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,close,5", DoorIndex);
-				DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-				Format(szFormatStr, sizeof(szFormatStr), "door%s,EnableCollision,,5.1", DoorIndex);
-				DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+				if (strlen(szBuffer[17]) == 0)
+				{
+					iRandom = GetRandomInt(1000, 5000);
+					IntToString(iRandom, DoorIndex, sizeof(DoorIndex));
+					Format(szFormatStr, sizeof(szFormatStr), "door%s", DoorIndex);
+					DispatchKeyValue(Obj_LoadEntity, "targetname", szFormatStr);
+					Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,dog_open,0", DoorIndex);
+					DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+					Format(szFormatStr, sizeof(szFormatStr), "door%s,DisableCollision,,1", DoorIndex);
+					DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+					Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,close,5", DoorIndex);
+					DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+					Format(szFormatStr, sizeof(szFormatStr), "door%s,EnableCollision,,5.1", DoorIndex);
+					DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+				}
+				else
+				{
+					SetEntPropString(Obj_LoadEntity, Prop_Data, "m_iName", szName);
+					Format(szFormatStr, sizeof(szFormatStr), "%s,setanimation,dog_open,0", szName);
+					DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+					Format(szFormatStr, sizeof(szFormatStr), "%s,DisableCollision,,1", szName);
+					DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+					Format(szFormatStr, sizeof(szFormatStr), "%s,setanimation,close,5", szName);
+					DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+					Format(szFormatStr, sizeof(szFormatStr), "%s,EnableCollision,,5.1", szName);
+					DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+				}				
 			}
 			else if (StrEqual(szModel, "models/props_lab/RavenDoor.mdl"))
 			{
-				iRandom = GetRandomInt(1000, 5000);
-				IntToString(iRandom, DoorIndex, sizeof(DoorIndex));
-				Format(szFormatStr, sizeof(szFormatStr), "door%s", DoorIndex);
-				DispatchKeyValue(Obj_LoadEntity, "targetname", szFormatStr);
-				
-				Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,RavenDoor_Open,0", DoorIndex);	
-				DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
-				Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,RavenDoor_Drop,7", DoorIndex);
-				DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+				if (strlen(szBuffer[17]) == 0)
+				{
+					iRandom = GetRandomInt(1000, 5000);
+					IntToString(iRandom, DoorIndex, sizeof(DoorIndex));
+					Format(szFormatStr, sizeof(szFormatStr), "door%s", DoorIndex);
+					DispatchKeyValue(Obj_LoadEntity, "targetname", szFormatStr);
+					
+					Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,RavenDoor_Open,0", DoorIndex);	
+					DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+					Format(szFormatStr, sizeof(szFormatStr), "door%s,setanimation,RavenDoor_Drop,7", DoorIndex);
+					DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+				}
+				else
+				{
+					SetEntPropString(Obj_LoadEntity, Prop_Data, "m_iName", szName);
+					Format(szFormatStr, sizeof(szFormatStr), "%s,setanimation,RavenDoor_Open,0", szName);	
+					DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+					Format(szFormatStr, sizeof(szFormatStr), "%s,setanimation,RavenDoor_Drop,7", szName);
+					DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+				}
 			}
 			
 			return true;
@@ -1707,6 +1743,21 @@ int GetClientInGame()
 	return iCount;
 }
 
+void TagsCheck(const char[] tag) //TF2Stat.sp
+{
+	Handle hTags = FindConVar("sv_tags");
+	char tags[255];
+	GetConVarString(hTags, tags, sizeof(tags));
+
+	if (!(StrContains(tags, tag, false)>-1))
+	{
+		char newTags[255];
+		Format(newTags, sizeof(newTags), "%s,%s", tags, tag);
+		SetConVarString(hTags, newTags);
+		GetConVarString(hTags, tags, sizeof(tags));
+	}
+	CloseHandle(hTags);
+}
 //------------[ Cloud ]------------------------------------------------------------------
 public void SQLErrorCheckCallback(Handle owner, Handle hndl, const char[] error, any data) 
 {

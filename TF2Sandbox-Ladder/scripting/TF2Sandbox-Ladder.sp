@@ -72,6 +72,13 @@ public void OnMapStart()
 			}
 		}
 	}
+	
+	TagsCheck("SandBox_Addons");
+}
+
+public void OnConfigsExecuted()
+{
+	TagsCheck("SandBox_Addons");
 }
 
 public Action Command_Ladder(int client, int args)
@@ -354,4 +361,20 @@ void PlayClimbSound(int client)
 public Action Timer_Cooldown(Handle timer, any client)
 {
 	g_bSoundCooldown[client] = false;
+}
+
+void TagsCheck(const char[] tag) //TF2Stat.sp
+{
+	Handle hTags = FindConVar("sv_tags");
+	char tags[255];
+	GetConVarString(hTags, tags, sizeof(tags));
+
+	if (!(StrContains(tags, tag, false)>-1))
+	{
+		char newTags[255];
+		Format(newTags, sizeof(newTags), "%s,%s", tags, tag);
+		SetConVarString(hTags, newTags);
+		GetConVarString(hTags, tags, sizeof(tags));
+	}
+	CloseHandle(hTags);
 }

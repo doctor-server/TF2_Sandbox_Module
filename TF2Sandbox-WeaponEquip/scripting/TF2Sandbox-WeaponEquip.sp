@@ -33,12 +33,18 @@ public void OnPluginStart()
 	g_hHud = CreateHudSynchronizer();
 }
 
+public void OnConfigsExecuted()
+{
+	TagsCheck("SandBox_Addons");
+}
+
 public void OnMapStart()
 {
 	for (int i = MaxClients; i < MAX_HOOK_ENTITIES; i++)	if (IsValidEdict(i) && IsValidWeapon(i) != -1)
 	{
 		TF2_CreateGlow(i);
 	}
+	TagsCheck("SandBox_Addons");
 }
 
 public void OnEntityCreated(int entity, const char[] classname)
@@ -230,4 +236,20 @@ int IsValidWeapon(int iEntity) //Return Weapon Index
 		}
 	}
 	return -1;
+}
+
+void TagsCheck(const char[] tag) //TF2Stat.sp
+{
+	Handle hTags = FindConVar("sv_tags");
+	char tags[255];
+	GetConVarString(hTags, tags, sizeof(tags));
+
+	if (!(StrContains(tags, tag, false)>-1))
+	{
+		char newTags[255];
+		Format(newTags, sizeof(newTags), "%s,%s", tags, tag);
+		SetConVarString(hTags, newTags);
+		GetConVarString(hTags, tags, sizeof(tags));
+	}
+	CloseHandle(hTags);
 }

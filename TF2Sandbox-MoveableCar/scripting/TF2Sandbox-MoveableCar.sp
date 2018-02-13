@@ -47,6 +47,12 @@ public void OnPluginStart()
 public void OnMapStart()
 {
 	for (int i = 1; i <= MaxClients; i++) g_iSpawnCar[i] = -1;
+	TagsCheck("SandBox_Addons");
+}
+
+public void OnConfigsExecuted()
+{
+	TagsCheck("SandBox_Addons");
 }
 
 public void OnClientPutInServer(int client)
@@ -725,3 +731,19 @@ public void AnglesNormalize(float vAngles[3])
 	while (vAngles[1] > 180.0)vAngles[1] -= 360.0;
 	while (vAngles[1] < -180.0)vAngles[1] += 360.0;
 } 
+
+void TagsCheck(const char[] tag) //TF2Stat.sp
+{
+	Handle hTags = FindConVar("sv_tags");
+	char tags[255];
+	GetConVarString(hTags, tags, sizeof(tags));
+
+	if (!(StrContains(tags, tag, false)>-1))
+	{
+		char newTags[255];
+		Format(newTags, sizeof(newTags), "%s,%s", tags, tag);
+		SetConVarString(hTags, newTags);
+		GetConVarString(hTags, tags, sizeof(tags));
+	}
+	CloseHandle(hTags);
+}
