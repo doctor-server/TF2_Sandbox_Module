@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "1.2"
+#define PLUGIN_VERSION "1.5"
 
 #include <sourcemod>
 #include <sdktools>
@@ -30,8 +30,23 @@ public void OnPluginStart()
 {
 	CreateConVar("sm_tf2sb_weaponequip_ver", PLUGIN_VERSION, "", FCVAR_SPONLY | FCVAR_NOTIFY);
 	g_hEnable = CreateConVar("sm_tf2sb_weaponequip_enable", "1", "Enable the Weapon equip Plugin?", 0, true, 0.0, true, 1.0);
+	RegAdminCmd("sm_spawnp", Command_SpawnPhysicsGun, 0, "Spawn PhysicsGun!");
+	
 	g_hHud = CreateHudSynchronizer();
 }
+
+public Action Command_SpawnPhysicsGun(int client, int args)
+{
+	if (!GetConVarBool(g_hEnable) || !IsValidClient(client))
+		return;
+	
+	float fAimPos[3];
+	if (GetAimOrigin(client, fAimPos))
+	{
+		BuildPhysicsGun(client, fAimPos);
+	}
+}
+
 
 public void OnConfigsExecuted()
 {
@@ -64,6 +79,19 @@ public Action Timer_WeaponSpawn(Handle timer, int entity)
 	}
 }
 
+public void OnAllPluginsLoaded() 
+{
+	CreateTimer(0.1, Timer_CreateWeapon, 0);
+}
+
+public Action Timer_CreateWeapon(Handle timer, int client)
+{
+	PrecacheModel("models/weapons/w_physics.mdl");
+	if(!TF2Items_CheckWeapon(66665))
+		TF2Items_CreateWeapon(66665, "tf_weapon_builder", 129, 1, 6, 99, "", -1, "models/weapons/w_physics.mdl", true); //tf_weapon_shotgun  tf_weapon_builder
+}
+
+
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon)
 {
 	if(IsValidClient(client) && IsPlayerAlive(client) && GetConVarBool(g_hEnable))	
@@ -85,32 +113,48 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				if(buttons & IN_ATTACK3)
 				{
 					int iWeapon;
-					for (int iSlot = 0; iSlot < 8; iSlot++) 
-	    			{ 
-	    				iWeapon = GetPlayerWeaponSlot(client, iSlot);
-	    				if(IsValidEntity(iWeapon) && iEntityIndex == GetEntProp(iWeapon, Prop_Send, "m_iItemDefinitionIndex"))
-	    				{
-		    				SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iWeapon);
-		    				return Plugin_Continue;
-	    				}
-	    			}
-					if(TF2Items_CheckWeapon(iEntityIndex))
+					if(iEntityIndex != 66665)
 					{
-						TF2Items_GiveWeapon(client, iEntityIndex);
 						for (int iSlot = 0; iSlot < 8; iSlot++) 
 		    			{ 
 		    				iWeapon = GetPlayerWeaponSlot(client, iSlot);
 		    				if(IsValidEntity(iWeapon) && iEntityIndex == GetEntProp(iWeapon, Prop_Send, "m_iItemDefinitionIndex"))
 		    				{
-		    					int iActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
-		    					if(GetEntProp(iActiveWeapon, Prop_Send, "m_iItemDefinitionIndex") == iEntityIndex)
-		    					{
-		    						SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iWeapon);
-		    					}
-		    					break;
+			    				SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iWeapon);
+			    				return Plugin_Continue;
 		    				}
 		    			}
+						if(TF2Items_CheckWeapon(iEntityIndex))
+						{
+							TF2Items_GiveWeapon(client, iEntityIndex);
+							for (int iSlot = 0; iSlot < 8; iSlot++) 
+			    			{ 
+			    				iWeapon = GetPlayerWeaponSlot(client, iSlot);
+			    				if(IsValidEntity(iWeapon) && iEntityIndex == GetEntProp(iWeapon, Prop_Send, "m_iItemDefinitionIndex"))
+			    				{
+			    					int iActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+			    					if(GetEntProp(iActiveWeapon, Prop_Send, "m_iItemDefinitionIndex") == iEntityIndex)
+			    					{
+			    						SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iWeapon);
+			    						break;
+			    					}
+			    					//break;
+			    				}
+			    			}
+						}
 					}
+					else if(iEntityIndex == 66665)
+					{
+						if(TF2Items_CheckWeapon(iEntityIndex))
+						{
+			    			TF2Items_GiveWeapon(client, iEntityIndex);
+			    			if(GetEntProp(GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon"), Prop_Send, "m_iItemDefinitionIndex") != 129)
+			    			{
+			    				SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", GetPlayerWeaponSlot(client, 1));
+			    			}
+			    		}
+					}
+					
 				}
 			}
 			
@@ -204,7 +248,7 @@ int IsValidWeapon(int iEntity) //Return Weapon Index
 	{
 		char szModel[100];
 		GetEntPropString(iEntity, Prop_Data, "m_ModelName", szModel, sizeof(szModel));
-		if (StrContains(szModel, "models/weapons/w_models/", false) != -1)
+		if (StrContains(szModel, "models/weapons/", false) != -1)
 		{
 			if(StrEqual(szModel, "models/weapons/w_models/w_bat.mdl"))					return 0; //Scout 
 			else if(StrEqual(szModel, "models/weapons/w_models/w_bonesaw.mdl")) 		return 8; //Medic
@@ -229,7 +273,8 @@ int IsValidWeapon(int iEntity) //Return Weapon Index
 			else if(StrEqual(szModel, "models/weapons/w_models/w_ttg_max_gun.mdl"))		return 294; //Scout    Lugermorph lol
 			else if(StrEqual(szModel, "models/weapons/w_models/w_wrangler.mdl")) 		return 140; //Engin
 			else if(StrEqual(szModel, "models/weapons/w_models/w_wrench.mdl")) 			return 7; //Engin	
-			else if(StrEqual(szModel, "models/weapons/w_models/w_medigun.mdl"))			return 29; //Medic
+			else if(StrEqual(szModel, "models/weapons/w_models/w_medigun.mdl"))			return 29; //Medic 
+			else if(StrEqual(szModel, "models/weapons/w_physics.mdl"))			return 66665;
 			//case ("models/weapons/w_models/w_builder.mdl"): 		return 28; //Engin
 			//case ("models/weapons/w_models/w_cigarette_case.mdl"):	return ; //Spy
 			//case ("models/weapons/w_models/w_pda_engineer.mdl"): 	return 25; //Engin
@@ -252,4 +297,61 @@ void TagsCheck(const char[] tag) //TF2Stat.sp
 		GetConVarString(hTags, tags, sizeof(tags));
 	}
 	CloseHandle(hTags);
+}
+
+stock bool GetAimOrigin(int client, float hOrigin[3])
+{
+	float vAngles[3], fOrigin[3];
+	GetClientEyePosition(client, fOrigin);
+	GetClientEyeAngles(client, vAngles);
+	
+	Handle trace = TR_TraceRayFilterEx(fOrigin, vAngles, MASK_SHOT, RayType_Infinite, TraceEntityFilterPlayer);
+	
+	if (TR_DidHit(trace))
+	{
+		TR_GetEndPosition(hOrigin, trace);
+		CloseHandle(trace);
+		return true;
+	}
+	
+	CloseHandle(trace);
+	return false;
+}
+
+public bool TraceEntityFilterPlayer(int entity, int contentsMask)
+{
+	return entity > GetMaxClients();
+}
+
+int BuildPhysicsGun(int iBuilder, float fOrigin[3])
+{
+	char szModel[100];
+	strcopy(szModel, sizeof(szModel), "models/weapons/w_physics.mdl");
+	
+	int iEntity = CreateEntityByName("prop_dynamic_override");
+	if (iEntity > MaxClients && IsValidEntity(iEntity))
+	{
+		SetEntProp(iEntity, Prop_Send, "m_nSolidType", 6);
+		SetEntProp(iEntity, Prop_Data, "m_nSolidType", 6);
+		Build_RegisterEntityOwner(iEntity, iBuilder);
+		
+		if (!IsModelPrecached(szModel))
+			PrecacheModel(szModel);
+		
+		SetEntityModel(iEntity, szModel);
+		
+		TeleportEntity(iEntity, fOrigin, NULL_VECTOR, NULL_VECTOR);
+		DispatchSpawn(iEntity);
+	}
+	
+	if(Build_ReturnEntityOwner(iEntity) != iBuilder)
+	{
+		if(IsValidEntity(iEntity))	AcceptEntityInput(iEntity, "kill");
+		Build_PrintToChat(iBuilder, "Fail to spawn PhysicsGun.");
+		return -1;
+	}	
+	else
+		Build_PrintToChat(iBuilder, "The PhysicsGun built.");
+		
+	return iEntity;
 }

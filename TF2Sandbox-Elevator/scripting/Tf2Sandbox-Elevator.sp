@@ -259,64 +259,70 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	if (!IsValidClient(client))
 		return;
 	
-	if(IsValidEntity(g_iElevatorIndex[client][0]))
+	if(IsValidEdict(g_iElevatorIndex[client][0]))
 	{
 		float fOrigin[3];
 		GetEntPropVector(g_iElevatorIndex[client][0], Prop_Send, "m_vecOrigin", fOrigin);
+		float fSize = GetEntPropFloat(i, Prop_Send, "m_flModelScale");
+		char szModel[255];
+		GetEntPropString(i, Prop_Data, "m_ModelName", szModel, sizeof(szModel));
 		
-		if(g_fElevatorAuto[client])
+		if(StrEqual(szModel, "models/props_trainyard/crane_platform001.mdl") && fSize == )
 		{
-			if((g_fElevatorHighest[client] <= fOrigin[2] && g_iElevatorAutoAction[client] == 1) || (g_fElevatorLowest[client] <= fOrigin[2]) && g_iElevatorAutoAction[client] == 3) //Down
+			if(g_fElevatorAuto[client])
 			{
-				g_iElevatorAutoAction[client] = 3;
-				fOrigin[2] -= 2.0;
-				TeleportEntity(g_iElevatorIndex[client][0], fOrigin, NULL_VECTOR, NULL_VECTOR);
-				EmitSoundToAll(SOUND_START, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
-				
-				if (g_fElevatorLowest[client] >= fOrigin[2])
+				if((g_fElevatorHighest[client] <= fOrigin[2] && g_iElevatorAutoAction[client] == 1) || (g_fElevatorLowest[client] <= fOrigin[2]) && g_iElevatorAutoAction[client] == 3) //Down
 				{
-					g_iElevatorAutoAction[client] = 0;
-					CreateTimer(10.0, Timer_ElevatorAction, client);
+					g_iElevatorAutoAction[client] = 3;
+					fOrigin[2] -= 2.0;
+					TeleportEntity(g_iElevatorIndex[client][0], fOrigin, NULL_VECTOR, NULL_VECTOR);
+					EmitSoundToAll(SOUND_START, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
+					
+					if (g_fElevatorLowest[client] >= fOrigin[2])
+					{
+						g_iElevatorAutoAction[client] = 0;
+						CreateTimer(10.0, Timer_ElevatorAction, client);
+					}
 				}
+				else if((g_fElevatorLowest[client] >= fOrigin[2] && g_iElevatorAutoAction[client] == 1) || (g_fElevatorHighest[client] >= fOrigin[2]) && g_iElevatorAutoAction[client] == 2) //UP
+				{
+					g_iElevatorAutoAction[client] = 2;
+					fOrigin[2] += 2.0;
+					TeleportEntity(g_iElevatorIndex[client][0], fOrigin, NULL_VECTOR, NULL_VECTOR);
+					EmitSoundToAll(SOUND_START, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
+					
+					if (g_fElevatorHighest[client] <= fOrigin[2])
+					{
+						g_iElevatorAutoAction[client] = 0;
+						CreateTimer(10.0, Timer_ElevatorAction, client);
+					}
+				}
+				else if(g_iElevatorAutoAction[client] == 0)
+				{
+					EmitSoundToAll(SOUND_STOP, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
+					EmitSoundToAll(SOUND_STOPHORN, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);		
+					g_iElevatorAutoAction[client] = -1;
+				}
+				//PrintCenterText(client, "Value: %i", g_iElevatorAutoAction[client]); //DeBug -1 = waiting, 0 = stop, 1 = Ready move, 2 = UP 3 = Down
 			}
-			else if((g_fElevatorLowest[client] >= fOrigin[2] && g_iElevatorAutoAction[client] == 1) || (g_fElevatorHighest[client] >= fOrigin[2]) && g_iElevatorAutoAction[client] == 2) //UP
+			else if(g_iElevatorAction[client] == 1 && g_fElevatorHighest[client] >= fOrigin[2])
 			{
-				g_iElevatorAutoAction[client] = 2;
 				fOrigin[2] += 2.0;
 				TeleportEntity(g_iElevatorIndex[client][0], fOrigin, NULL_VECTOR, NULL_VECTOR);
 				EmitSoundToAll(SOUND_START, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
-				
-				if (g_fElevatorHighest[client] <= fOrigin[2])
-				{
-					g_iElevatorAutoAction[client] = 0;
-					CreateTimer(10.0, Timer_ElevatorAction, client);
-				}
 			}
-			else if(g_iElevatorAutoAction[client] == 0)
+			else if(g_iElevatorAction[client] == 2 && g_fElevatorLowest[client] <= fOrigin[2])
+			{
+				fOrigin[2] -= 2.0;
+				TeleportEntity(g_iElevatorIndex[client][0], fOrigin, NULL_VECTOR, NULL_VECTOR);
+				EmitSoundToAll(SOUND_START, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
+			}
+			else if((g_iElevatorAction[client] == 0 || g_fElevatorHighest[client] >= fOrigin[2] || g_fElevatorLowest[client] <= fOrigin[2]) && g_iElevatorAction[client] != -1)
 			{
 				EmitSoundToAll(SOUND_STOP, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
-				EmitSoundToAll(SOUND_STOPHORN, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);		
-				g_iElevatorAutoAction[client] = -1;
+				EmitSoundToAll(SOUND_STOPHORN, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);			
+				g_iElevatorAction[client] = -1;
 			}
-			//PrintCenterText(client, "Value: %i", g_iElevatorAutoAction[client]); //DeBug -1 = waiting, 0 = stop, 1 = Ready move, 2 = UP 3 = Down
-		}
-		else if(g_iElevatorAction[client] == 1 && g_fElevatorHighest[client] >= fOrigin[2])
-		{
-			fOrigin[2] += 2.0;
-			TeleportEntity(g_iElevatorIndex[client][0], fOrigin, NULL_VECTOR, NULL_VECTOR);
-			EmitSoundToAll(SOUND_START, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
-		}
-		else if(g_iElevatorAction[client] == 2 && g_fElevatorLowest[client] <= fOrigin[2])
-		{
-			fOrigin[2] -= 2.0;
-			TeleportEntity(g_iElevatorIndex[client][0], fOrigin, NULL_VECTOR, NULL_VECTOR);
-			EmitSoundToAll(SOUND_START, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
-		}
-		else if((g_iElevatorAction[client] == 0 || g_fElevatorHighest[client] >= fOrigin[2] || g_fElevatorLowest[client] <= fOrigin[2]) && g_iElevatorAction[client] != -1)
-		{
-			EmitSoundToAll(SOUND_STOP, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
-			EmitSoundToAll(SOUND_STOPHORN, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);			
-			g_iElevatorAction[client] = -1;
 		}
 	}
 	
@@ -398,7 +404,7 @@ int BuildElevator(int iBuilder, float fOrigin[3])
 	{
 		SetEntProp(iElevator, Prop_Send, "m_nSolidType", 6);
 		SetEntProp(iElevator, Prop_Data, "m_nSolidType", 6);
-		SetEntPropFloat(iElevator, Prop_Send, "m_flModelScale", 0.435);  
+		SetEntPropFloat(iElevator, Prop_Send, "m_flModelScale", 0.435314);  
 		Build_RegisterEntityOwner(iElevator, iBuilder);
 		
 		if (!IsModelPrecached(MODEL_ELEVATORGROUND))

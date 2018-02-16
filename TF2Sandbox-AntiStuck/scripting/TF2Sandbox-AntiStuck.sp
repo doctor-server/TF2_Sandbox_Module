@@ -3,13 +3,13 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "6.0"
+#define PLUGIN_VERSION "6.5"
 
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
 #include <build>
-
+ 
 #pragma newdecls required
 
 public Plugin myinfo = 
@@ -44,11 +44,16 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	if (GetConVarBool(g_hEnabled))
 	{
 		if (IsValidClient(client) && IsPlayerAlive(client) && GetEntityMoveType(client) != MOVETYPE_NOCLIP && !(buttons & IN_ATTACK) && !(buttons & IN_DUCK) && IsPlayerStuckInEnt(client))
-		{
-			float iPosition[3];
-			GetClientAbsOrigin(client, iPosition);
-			iPosition[2] += 10.0;
-			TeleportEntity(client, iPosition, NULL_VECTOR, NULL_VECTOR);
+		{ 
+			int iType = GetEntProp(client, Prop_Data, "m_nWaterLevel");
+			//PrintCenterText(client, "%i", iType);
+			if (iType == 0) //Not in water
+			{
+				float iPosition[3];
+				GetClientAbsOrigin(client, iPosition);
+				iPosition[2] += 10.0;
+				TeleportEntity(client, iPosition, NULL_VECTOR, NULL_VECTOR);
+			}
 		}
 	}
 }
