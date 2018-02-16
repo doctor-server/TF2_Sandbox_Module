@@ -263,11 +263,11 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	{
 		float fOrigin[3];
 		GetEntPropVector(g_iElevatorIndex[client][0], Prop_Send, "m_vecOrigin", fOrigin);
-		float fSize = GetEntPropFloat(i, Prop_Send, "m_flModelScale");
+		float fSize = GetEntPropFloat(g_iElevatorIndex[client][0], Prop_Send, "m_flModelScale");
 		char szModel[255];
-		GetEntPropString(i, Prop_Data, "m_ModelName", szModel, sizeof(szModel));
+		GetEntPropString(g_iElevatorIndex[client][0], Prop_Data, "m_ModelName", szModel, sizeof(szModel));
 		
-		if(StrEqual(szModel, "models/props_trainyard/crane_platform001.mdl") && fSize == )
+		if(StrEqual(szModel, "models/props_trainyard/crane_platform001.mdl") && fSize == 0.435314)
 		{
 			if(g_fElevatorAuto[client])
 			{
