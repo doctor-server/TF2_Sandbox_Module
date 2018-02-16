@@ -83,6 +83,17 @@ public Action Command_EquipPhysicsGun(int client, int args)
 			SendDialogToOne(client, 240, 248, 255, "You have equip a Physics Gun v2!");
 			//PrintHintText(client, "You have equip a Physics Gun v2!");
 		}
+		else 
+		{
+			TF2Items_CreateWeapon(g_iPhysicGunIndex, "tf_weapon_builder", g_iPhysicGunWeaponIndex, 1, 9, 99, "", -1, MODEL_PHYSICSGUN, true);
+			if(TF2Items_CheckWeapon(g_iPhysicGunIndex))
+			{
+				TF2Items_GiveWeapon(client, g_iPhysicGunIndex);
+				Build_PrintToChat(client, "You have equip a Physics Gun v2!");
+				Build_PrintToChat(client, "Your Physics Gun will be in the Secondary Slot.");
+				SendDialogToOne(client, 240, 248, 255, "You have equip a Physics Gun v2!");
+			}	
+		}
 	}
 }
 
@@ -104,7 +115,7 @@ public void OnMapStart()
 	PrecacheSound(SOUND_LOOP);
 	
 	TagsCheck("SandBox_Addons");
-	CreateTimer(5.0, Timer_CreateWeapon, 0);
+	CreateTimer(15.0, Timer_CreateWeapon, 0);
 	
 	for (int i = 1; i < MAXPLAYERS; i++)
 	{
@@ -116,8 +127,8 @@ public void OnMapStart()
 public Action Timer_CreateWeapon(Handle timer, int client)
 {
 	PrecacheModel(MODEL_PHYSICSGUN);
-	if(!TF2Items_CheckWeapon(g_iPhysicGunIndex))
-		TF2Items_CreateWeapon(g_iPhysicGunIndex, "tf_weapon_builder", g_iPhysicGunWeaponIndex, 1, 9, 99, "", -1, MODEL_PHYSICSGUN, true); //tf_weapon_shotgun  tf_weapon_builder
+	//if(!TF2Items_CheckWeapon(g_iPhysicGunIndex))
+	TF2Items_CreateWeapon(g_iPhysicGunIndex, "tf_weapon_builder", g_iPhysicGunWeaponIndex, 1, 9, 99, "", -1, MODEL_PHYSICSGUN, true); //tf_weapon_shotgun  tf_weapon_builder
 }
 
 public void OnConfigsExecuted()
