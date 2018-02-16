@@ -87,8 +87,8 @@ public void OnAllPluginsLoaded()
 public Action Timer_CreateWeapon(Handle timer, int client)
 {
 	PrecacheModel("models/weapons/w_physics.mdl");
-	if(!TF2Items_CheckWeapon(66665))
-		TF2Items_CreateWeapon(66665, "tf_weapon_builder", 129, 1, 6, 99, "", -1, "models/weapons/w_physics.mdl", true); //tf_weapon_shotgun  tf_weapon_builder
+	if(!TF2Items_CheckWeapon(66666))
+		TF2Items_CreateWeapon(66666, "tf_weapon_builder", 129, 1, 6, 99, "", -1, "models/weapons/w_physics.mdl", true); //tf_weapon_shotgun  tf_weapon_builder
 }
 
 
@@ -113,7 +113,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				if(buttons & IN_ATTACK3)
 				{
 					int iWeapon;
-					if(iEntityIndex != 66665)
+					if(iEntityIndex != 66666)
 					{
 						for (int iSlot = 0; iSlot < 8; iSlot++) 
 		    			{ 
@@ -143,7 +143,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			    			}
 						}
 					}
-					else if(iEntityIndex == 66665)
+					else if(iEntityIndex == 66666)
 					{
 						if(TF2Items_CheckWeapon(iEntityIndex))
 						{
@@ -274,7 +274,7 @@ int IsValidWeapon(int iEntity) //Return Weapon Index
 			else if(StrEqual(szModel, "models/weapons/w_models/w_wrangler.mdl")) 		return 140; //Engin
 			else if(StrEqual(szModel, "models/weapons/w_models/w_wrench.mdl")) 			return 7; //Engin	
 			else if(StrEqual(szModel, "models/weapons/w_models/w_medigun.mdl"))			return 29; //Medic 
-			else if(StrEqual(szModel, "models/weapons/w_physics.mdl"))			return 66665;
+			else if(StrEqual(szModel, "models/weapons/w_physics.mdl"))			return 66666;
 			//case ("models/weapons/w_models/w_builder.mdl"): 		return 28; //Engin
 			//case ("models/weapons/w_models/w_cigarette_case.mdl"):	return ; //Spy
 			//case ("models/weapons/w_models/w_pda_engineer.mdl"): 	return 25; //Engin
