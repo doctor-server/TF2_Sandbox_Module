@@ -1419,14 +1419,19 @@ bool LoadProps(int loader, char[] szLoadString)
 					DispatchSpawn(Obj_LightDynamic);
 					TeleportEntity(Obj_LightDynamic, fOrigin, fAngles, NULL_VECTOR);
 					
-					char szNameMelon[64];
 					if (strlen(szBuffer[17]) == 0)
 					{
+						char szNameMelon[64];
 						Format(szNameMelon, sizeof(szNameMelon), "Obj_LoadEntity%i", GetRandomInt(1000, 5000));
 						DispatchKeyValue(Obj_LoadEntity, "targetname", szNameMelon);
 						SetVariantString(szNameMelon);
 					}
-					else SetEntPropString(Obj_LoadEntity, Prop_Data, "m_iName", szName);
+					else 
+					{
+						DispatchKeyValue(Obj_LoadEntity, "targetname", szName);
+						SetVariantString(szName);
+						//SetEntPropString(Obj_LoadEntity, Prop_Data, "m_iName", szName);
+					}
 					
 					AcceptEntityInput(Obj_LightDynamic, "setparent", -1);
 					AcceptEntityInput(Obj_LightDynamic, "turnon", loader, loader);
