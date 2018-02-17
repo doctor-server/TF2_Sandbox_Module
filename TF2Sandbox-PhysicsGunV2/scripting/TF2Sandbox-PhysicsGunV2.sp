@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "1.0"
+#define PLUGIN_VERSION "2.0"
 
 #include <sourcemod>
 #include <sdktools>
@@ -17,7 +17,7 @@
 
 public Plugin myinfo = 
 {
-	name = "[TF2] SandBox - PhysicsGun V2",
+	name = "[TF2] SandBox - PhysicsGun V2 + Door Fix",
 	author = PLUGIN_AUTHOR,
 	description = "Another PhysicsGun plugin for Tf2Sandbox",
 	version = PLUGIN_VERSION,
@@ -57,7 +57,7 @@ public void OnPluginStart()
 {
 	CreateConVar("sm_tf2sb_pg_version", PLUGIN_VERSION, "", FCVAR_SPONLY | FCVAR_NOTIFY);
 	g_cvGrabOtherProp = CreateConVar("sm_tf2sb_pg_grabothers", "0", "0 - Can Not grab others props, 1 - Can grab other props", 0, true, 0.0, true, 1.0);
-	g_cvPhysics = CreateConVar("sm_tf2sb_pg_enablephysics", "0", "0 - Disable Physics function, 1 - Enable Physics function", 0, true, 0.0, true, 1.0);
+	g_cvPhysics = CreateConVar("sm_tf2sb_pg_enablephysics", "1", "0 - Disable Physics function, 1 - Enable Physics function(Admin Only)", 0, true, 0.0, true, 1.0);
 	g_cvGrabPlayer = CreateConVar("sm_tf2sb_pg_enablegrabplayer", "1", "0 - Disable Grab Player, 1 - Enable Grab Player(Admin Only), 2 - Everyone can Grab Player(Dangerous!)", 0, true, 0.0, true, 2.0);
 	
 	RegAdminCmd("sm_sbpg", Command_EquipPhysicsGun, 0, "Equip PhysicsGun!");
@@ -77,7 +77,11 @@ public Action Command_EquipPhysicsGun(int client, int args)
 		
 		if(TF2Items_CheckWeapon(g_iPhysicGunIndex))
 		{
-			TF2Items_GiveWeapon(client, g_iPhysicGunIndex);
+			int PhysicsGun = TF2Items_GiveWeapon(client, g_iPhysicGunIndex);
+			if(IsValidEntity(PhysicsGun))
+			{
+				SetEntProp(PhysicsGun, Prop_Send, "m_nSkin", 1); //1 = PhysicsGun 0 = GravityGun
+			}
 			Build_PrintToChat(client, "You have equip a Physics Gun v2!");
 			Build_PrintToChat(client, "Your Physics Gun will be in the Secondary Slot.");
 			SendDialogToOne(client, 240, 248, 255, "You have equip a Physics Gun v2!");
@@ -88,7 +92,11 @@ public Action Command_EquipPhysicsGun(int client, int args)
 			TF2Items_CreateWeapon(g_iPhysicGunIndex, "tf_weapon_builder", g_iPhysicGunWeaponIndex, 1, 9, 99, "", -1, MODEL_PHYSICSGUN, true);
 			if(TF2Items_CheckWeapon(g_iPhysicGunIndex))
 			{
-				TF2Items_GiveWeapon(client, g_iPhysicGunIndex);
+				int PhysicsGun = TF2Items_GiveWeapon(client, g_iPhysicGunIndex);
+				if(IsValidEntity(PhysicsGun))
+				{
+					SetEntProp(PhysicsGun, Prop_Send, "m_nSkin", 1); //1 = PhysicsGun 2= GravityGun
+				}
 				Build_PrintToChat(client, "You have equip a Physics Gun v2!");
 				Build_PrintToChat(client, "Your Physics Gun will be in the Secondary Slot.");
 				SendDialogToOne(client, 240, 248, 255, "You have equip a Physics Gun v2!");
@@ -162,209 +170,210 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		
 	if(IsPlayerAlive(client))
 	{
+		int iEntity = Build_ClientAimEntity(client, false, true);
+		if(IsPropBuggedDoor(iEntity))
+		{
+			char szName[64];
+			SetHudTextParams(-1.0, 0.6, 3.0, 255, 0, 0, 230, 1, 6.0, 1.0, 2.0);
+			int iEntityOwner = Build_ReturnEntityOwner(iEntity);
+			GetEntPropString(iEntity, Prop_Data, "m_iName", szName, sizeof(szName));
+			if(IsValidClient(iEntityOwner)) ShowSyncHudText(client, g_hHud, "%s\n built by %N", szName, iEntityOwner);
+			else ShowSyncHudText(client, g_hHud, "%s\n built by *World", szName);
+		}
+			
 		int iWeapon = GetPlayerWeaponSlot(client, 1);
 		int iActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
 
 		if(IsValidEntity(iWeapon) && iWeapon == iActiveWeapon && GetEntProp(iActiveWeapon, Prop_Send, "m_iItemDefinitionIndex") == g_iPhysicGunWeaponIndex && GetEntProp(iActiveWeapon, Prop_Send, "m_iEntityQuality") == 9)
 		{
-			//char strName[50];
-			//GetEntityClassname(iWeapon, strName, sizeof(strName));
-			//if(StrEqual(strName, "tf_weapon_builder"))
-			//{
-				if(buttons & IN_ATTACK)//When In_Attack
+			float vector[3], fZero[3];
+			if(buttons & IN_ATTACK)//When In_Attack
+			{
+				//int iEntity = Build_ClientAimEntity(client, false, true);
+				if(IsValidEntity(iEntity) && (Build_ReturnEntityOwner(iEntity) == client || GetConVarBool(g_cvGrabOtherProp)) && !IsValidEntity(g_iGrabbingEntity[client][0])) //g_iGrabbingEntity[client][0] to iEntity when 
 				{
-					int iEntity = Build_ClientAimEntity(client, false, true);
-					if(IsValidEntity(iEntity) && (Build_ReturnEntityOwner(iEntity) == client || GetConVarBool(g_cvGrabOtherProp)) && !IsValidEntity(g_iGrabbingEntity[client][0])) //g_iGrabbingEntity[client][0] to iEntity when 
-					{
-						g_iGrabbingEntity[client][0] = iEntity; //Bind Entity
-						if(!TF2_HasGlow(g_iGrabbingEntity[client][0]) && !IsValidEntity(g_iGrabbingEntity[client][1])) g_iGrabbingEntity[client][1] = TF2_CreateGlow(iEntity, GetClientTeam(client));
-						g_fGrabbingDistance[client] = GetEntitiesDistance(client, g_iGrabbingEntity[client][0]);
-						
-						float fEOrigin[3], fEndPosition[3], fDummy[3];
-						GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Data, "m_vecOrigin", fEOrigin);
-						GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
-						
-						g_fGrabbingDifference[client][0] = fEOrigin[0] - fEndPosition[0];
-						g_fGrabbingDifference[client][1] = fEOrigin[1] - fEndPosition[1];
-						g_fGrabbingDifference[client][2] = fEOrigin[2] - fEndPosition[2];
-						
-						if(GetConVarBool(g_cvPhysics)) g_bGrabbingAttack2[client] = false;
-						
-						EmitSoundToAll(SOUND_PICKUP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
-						EmitSoundToAll(SOUND_LOOP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.5);
-					}
-					else if((GetConVarInt(g_cvGrabPlayer) == 2 || (GetConVarInt(g_cvGrabPlayer) == 1 && CheckCommandAccess(client, "sm_admin", ADMFLAG_GENERIC))) && IsValidEntity(iEntity) && IsValidClient(iEntity) && !IsValidEntity(g_iGrabbingEntity[client][0]))
-					{
-						g_iGrabbingEntity[client][0] = iEntity; //Bind Entity
-						if(!TF2_HasGlow(g_iGrabbingEntity[client][0]) && !IsValidEntity(g_iGrabbingEntity[client][1])) g_iGrabbingEntity[client][1] = TF2_CreateGlow(iEntity, GetClientTeam(client));
-						g_fGrabbingDistance[client] = GetEntitiesDistance(client, g_iGrabbingEntity[client][0]);
-						
-						float fEOrigin[3], fEndPosition[3], fDummy[3];
-						GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Data, "m_vecOrigin", fEOrigin);
-						GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
-						
-						g_fGrabbingDifference[client][0] = fEOrigin[0] - fEndPosition[0];
-						g_fGrabbingDifference[client][1] = fEOrigin[1] - fEndPosition[1];
-						g_fGrabbingDifference[client][2] = fEOrigin[2] - fEndPosition[2];
-						
-						if(GetConVarBool(g_cvPhysics)) g_bGrabbingAttack2[client] = false;
-						
-						EmitSoundToAll(SOUND_PICKUP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
-						EmitSoundToAll(SOUND_LOOP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.5);
-					}
+					g_iGrabbingEntity[client][0] = iEntity; //Bind Entity
+					if(!TF2_HasGlow(g_iGrabbingEntity[client][0]) && !IsValidEntity(g_iGrabbingEntity[client][1])) g_iGrabbingEntity[client][1] = TF2_CreateGlow(iEntity, GetClientTeam(client));
+					g_fGrabbingDistance[client] = GetEntitiesDistance(client, g_iGrabbingEntity[client][0]);
 					
-					if (IsValidEntity(g_iGrabbingEntity[client][0]))
-					{
-						TF2_AddCondition(client, TFCond_CritOnWin, 0.1);
-						TF2_AddCondition(client, TFCond_TeleportedGlow, 0.1);
-						float fOrigin[3], fEOrigin[3], fEndPosition[3], fDummy[3];
-		
-						GetClientEyePosition(client, fOrigin);
-						GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Data, "m_vecOrigin", fEOrigin);
-						
-						fEOrigin[0] = fEOrigin[0] - g_fGrabbingDifference[client][0];
-						fEOrigin[1] = fEOrigin[1] - g_fGrabbingDifference[client][1];
-						fEOrigin[2] = fEOrigin[2] - g_fGrabbingDifference[client][2];
-						SetEntityGlows(fOrigin, fEOrigin, GetClientTeam(client));			
-						
-						if(buttons & IN_RELOAD) //Filter not client
-						{
-							vel[0] = 0.0;
-							vel[1] = 0.0;
-							vel[2] = 0.0;
-							
-							float fAngle[3], fFixAngle[3];
-							GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Send, "m_angRotation", fAngle);
-							
-							GetVectorAnglesTwoPoints(fOrigin, fEOrigin, fFixAngle);
-							AnglesNormalize(fFixAngle);
-							
-							TeleportEntity(client, NULL_VECTOR, fFixAngle, NULL_VECTOR);
+					float fEOrigin[3], fEndPosition[3], fDummy[3];
+					GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Data, "m_vecOrigin", fEOrigin);
+					GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
+					
+					g_fGrabbingDifference[client][0] = fEOrigin[0] - fEndPosition[0];
+					g_fGrabbingDifference[client][1] = fEOrigin[1] - fEndPosition[1];
+					g_fGrabbingDifference[client][2] = fEOrigin[2] - fEndPosition[2];
+					
+					if(GetConVarBool(g_cvPhysics)) g_bGrabbingAttack2[client] = false;
+					
+					EmitSoundToAll(SOUND_PICKUP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
+					EmitSoundToAll(SOUND_LOOP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.5);
+				}
+				else if((GetConVarInt(g_cvGrabPlayer) == 2 || (GetConVarInt(g_cvGrabPlayer) == 1 && CheckCommandAccess(client, "sm_admin", ADMFLAG_GENERIC))) && IsValidEntity(iEntity) && IsValidClient(iEntity) && !IsValidEntity(g_iGrabbingEntity[client][0]))
+				{
+					g_iGrabbingEntity[client][0] = iEntity; //Bind Entity
+					if(!TF2_HasGlow(g_iGrabbingEntity[client][0]) && !IsValidEntity(g_iGrabbingEntity[client][1])) g_iGrabbingEntity[client][1] = TF2_CreateGlow(iEntity, GetClientTeam(client));
+					g_fGrabbingDistance[client] = GetEntitiesDistance(client, g_iGrabbingEntity[client][0]);
+					
+					float fEOrigin[3], fEndPosition[3], fDummy[3];
+					GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Data, "m_vecOrigin", fEOrigin);
+					GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
+					
+					g_fGrabbingDifference[client][0] = fEOrigin[0] - fEndPosition[0];
+					g_fGrabbingDifference[client][1] = fEOrigin[1] - fEndPosition[1];
+					g_fGrabbingDifference[client][2] = fEOrigin[2] - fEndPosition[2];
+					
+					if(GetConVarBool(g_cvPhysics)) g_bGrabbingAttack2[client] = false;
+					
+					EmitSoundToAll(SOUND_PICKUP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
+					EmitSoundToAll(SOUND_LOOP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.5);
+				}
+				
+				if (IsValidEntity(g_iGrabbingEntity[client][0]))
+				{
+					TF2_AddCondition(client, TFCond_CritOnWin, 0.1);
+					TF2_AddCondition(client, TFCond_TeleportedGlow, 0.1);
+					float fOrigin[3], fEOrigin[3], fEndPosition[3], fDummy[3];
+	
+					GetClientEyePosition(client, fOrigin);
+					GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Data, "m_vecOrigin", fEOrigin);
 								
-							if(buttons & IN_MOVELEFT)
-							{
-								fAngle[1] -= 1.0;
-								AnglesNormalize(fAngle);
-								TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fAngle, NULL_VECTOR);
-							}
-							else if(buttons & IN_MOVERIGHT)
-							{
-								fAngle[1] += 1.0;
-								AnglesNormalize(fAngle);
-								TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fAngle, NULL_VECTOR);
-							}
-							else if(buttons & IN_FORWARD)
-							{
-								fAngle[0] -= 1.0;
-								AnglesNormalize(fAngle);
-								TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fAngle, NULL_VECTOR);
-							}
-							else if(buttons & IN_BACK)
-							{
-								fAngle[0] += 1.0;
-								AnglesNormalize(fAngle);
-								TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fAngle, NULL_VECTOR);
-							}
-						}
-						else 
-						{		
-							GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
-							fEndPosition[0] = fEndPosition[0] + g_fGrabbingDifference[client][0];
-							fEndPosition[1] = fEndPosition[1] + g_fGrabbingDifference[client][1];
-							fEndPosition[2] = fEndPosition[2] + g_fGrabbingDifference[client][2];
-							
-							if(IsValidClient(g_iGrabbingEntity[client][0]) && IsPlayerAlive(g_iGrabbingEntity[client][0]))
-							{
-								float fZero[3];
-								TeleportEntity(g_iGrabbingEntity[client][0], fEndPosition, NULL_VECTOR, fZero);
-							}
-							else if(IsValidClient(g_iGrabbingEntity[client][0]) && !IsPlayerAlive(g_iGrabbingEntity[client][0]))	
-							{
-								g_iGrabbingEntity[client][0] = -1;
-							}
-							else 
-							{
-								TeleportEntity(g_iGrabbingEntity[client][0], fEndPosition, NULL_VECTOR, NULL_VECTOR);
-							}
-						}		
+					fEOrigin[0] = fEOrigin[0] - g_fGrabbingDifference[client][0];
+					fEOrigin[1] = fEOrigin[1] - g_fGrabbingDifference[client][1];
+					fEOrigin[2] = fEOrigin[2] - g_fGrabbingDifference[client][2];
+					SetEntityGlows(fOrigin, fEOrigin, GetClientTeam(client));			
+					
+					if(buttons & IN_RELOAD) //Press R
+					{
+						vel[0] = 0.0;
+						vel[1] = 0.0;
+						vel[2] = 0.0;
 						
-						if(GetConVarBool(g_cvPhysics)) //Enable Physics function, Optional reason: FPS drop
+						float fAngle[3], fFixAngle[3];
+						GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Send, "m_angRotation", fAngle);
+						
+						GetVectorAnglesTwoPoints(fOrigin, fEOrigin, fFixAngle);
+						AnglesNormalize(fFixAngle);
+						
+						TeleportEntity(client, NULL_VECTOR, fFixAngle, NULL_VECTOR);
+							
+						if(buttons & IN_MOVELEFT)
 						{
-							if(buttons & IN_ATTACK2 && !(buttons & IN_RELOAD))
-							{
-								if(!g_bGrabbingAttack2[client])	
-								{	
-									char szClass[64];
-									GetEdictClassname(g_iGrabbingEntity[client][0], szClass, sizeof(szClass));
-									
-									if (StrEqual(szClass, "prop_physics"))
-									{
-										if(Phys_IsPhysicsObject(g_iGrabbingEntity[client][0]))
-										{
-											SetHudTextParams(0.8, 0.7, 3.0, 255, 215, 0, 255, 1, 6.0, 0.5, 1.5);
-											if(Phys_IsGravityEnabled(g_iGrabbingEntity[client][0]))
-											{				
-												ShowSyncHudText(client, g_hHud, "Prop freezed");										
-												Phys_EnableGravity(g_iGrabbingEntity[client][0], false);
-												Phys_EnableMotion(g_iGrabbingEntity[client][0], false);
-											}
-											else 
-											{
-												ShowSyncHudText(client, g_hHud, "Prop unfreezed");
-												Phys_EnableGravity(g_iGrabbingEntity[client][0], true);
-												Phys_EnableMotion(g_iGrabbingEntity[client][0], true);
-											}
-										}									
-									}
-									else if (StrEqual(szClass, "prop_dynamic")) //Set prop_dynamic to Prop_Physics
-									{
-										//SendDialogToOne(client, 240, 248, 255, "Error: Prop NOT prop_physics");
-										int iNewEntity = PhysicsGun_ChangeToPropPhysics(client, g_iGrabbingEntity[client][0]);
-										if(IsValidEntity(iNewEntity))
-										{
-											if(IsValidEntity(g_iGrabbingEntity[client][1]))	
-											{
-												AcceptEntityInput(g_iGrabbingEntity[client][1], "Kill");
-												g_iGrabbingEntity[client][1] = -1;
-											}
-											AcceptEntityInput(g_iGrabbingEntity[client][0], "Kill");
-											g_iGrabbingEntity[client][0] = iNewEntity;
-										}
-									}
-									g_bGrabbingAttack2[client] = true;
-								}
-							}
-							else if(g_bGrabbingAttack2[client])	 
-							{
+							fAngle[1] -= 1.0;
+							AnglesNormalize(fAngle);
+							TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fAngle, NULL_VECTOR);
+						}
+						else if(buttons & IN_MOVERIGHT)
+						{
+							fAngle[1] += 1.0;
+							AnglesNormalize(fAngle);
+							TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fAngle, NULL_VECTOR);
+						}
+						else if(buttons & IN_FORWARD)
+						{
+							fAngle[0] -= 1.0;
+							AnglesNormalize(fAngle);
+							TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fAngle, NULL_VECTOR);
+						}
+						else if(buttons & IN_BACK)
+						{
+							fAngle[0] += 1.0;
+							AnglesNormalize(fAngle);
+							TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fAngle, NULL_VECTOR);
+						}
+					}
+					else 
+					{		
+						GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
+						
+						fEndPosition[0] = fEndPosition[0] + g_fGrabbingDifference[client][0];
+						fEndPosition[1] = fEndPosition[1] + g_fGrabbingDifference[client][1];
+						fEndPosition[2] = fEndPosition[2] + g_fGrabbingDifference[client][2];
+						
+						MakeVectorFromPoints(fEOrigin, fEndPosition, vector); //Set velocity
+						ScaleVector(vector, 10.0);
+							
+						char szClass[64];
+						GetEdictClassname(g_iGrabbingEntity[client][0], szClass, sizeof(szClass));
+						if(StrEqual(szClass, "prop_physics") && Phys_IsGravityEnabled(g_iGrabbingEntity[client][0]))
+						{
+							Phys_SetVelocity(EntRefToEntIndex(g_iGrabbingEntity[client][0]), vector, fZero, true);
+							Phys_Wake(g_iGrabbingEntity[client][0]);
+						}	
+						else TeleportEntity(g_iGrabbingEntity[client][0], fEndPosition, NULL_VECTOR, NULL_VECTOR);
+					}		
+					
+					if(GetConVarBool(g_cvPhysics) && CheckCommandAccess(client, "sm_admin", ADMFLAG_GENERIC) && !IsPropBuggedDoor(g_iGrabbingEntity[client][0])) //Enable Physics function, Optional reason: FPS drop
+					{
+						if(buttons & IN_ATTACK2 && !(buttons & IN_RELOAD))
+						{
+							if(!g_bGrabbingAttack2[client])	
+							{	
 								char szClass[64];
 								GetEdictClassname(g_iGrabbingEntity[client][0], szClass, sizeof(szClass));
-								if(StrEqual(szClass, "prop_physics") && Phys_IsGravityEnabled(g_iGrabbingEntity[client][0]))
+								
+								if (StrEqual(szClass, "prop_physics"))
 								{
-									float fEntityVec[3];
-									GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Data, "m_vecAbsVelocity", fEntityVec);
-									if(fEntityVec[0] <= 0.0 && fEntityVec[1] <= 0.0 && fEntityVec[2] <= 0.0)
+									if(Phys_IsPhysicsObject(g_iGrabbingEntity[client][0]))
 									{
-										float velo[3];
-										velo[2] = 0.000001;
-										TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, NULL_VECTOR, velo);
+										//SetHudTextParams(0.8, 0.7, 3.0, 255, 215, 0, 255, 1, 6.0, 0.5, 1.5);
+										if(Phys_IsGravityEnabled(g_iGrabbingEntity[client][0]))
+										{				
+											//ShowSyncHudText(client, g_hHud, "Prop freezed");										
+											Phys_EnableGravity(g_iGrabbingEntity[client][0], false);
+											Phys_EnableMotion(g_iGrabbingEntity[client][0], false);
+											Phys_Sleep(g_iGrabbingEntity[client][0]);
+											PrintHintText(client, "Prop freezed");
+										}
+										else 
+										{
+											//ShowSyncHudText(client, g_hHud, "Prop unfreezed");
+											Phys_EnableGravity(g_iGrabbingEntity[client][0], true);
+											Phys_EnableMotion(g_iGrabbingEntity[client][0], true);
+											Phys_Wake(g_iGrabbingEntity[client][0]);
+											PrintHintText(client, "Prop unfreezed");
+										}
+									}									
+								}
+								else if (StrEqual(szClass, "prop_dynamic")) //Set prop_dynamic to Prop_Physics
+								{
+									//SendDialogToOne(client, 240, 248, 255, "Error: Prop NOT prop_physics");
+									int iNewEntity = PhysicsGun_ChangeToPropPhysics(client, g_iGrabbingEntity[client][0]);
+									if(IsValidEntity(iNewEntity))
+									{
+										if(IsValidEntity(g_iGrabbingEntity[client][1]))	
+										{
+											AcceptEntityInput(g_iGrabbingEntity[client][1], "Kill");
+											g_iGrabbingEntity[client][1] = -1;
+										}
+										AcceptEntityInput(g_iGrabbingEntity[client][0], "Kill");
+										g_iGrabbingEntity[client][0] = iNewEntity;
 									}
-								}	
-								g_bGrabbingAttack2[client] = false;
+								}
+								g_bGrabbingAttack2[client] = true;
 							}
 						}
-					}				
-				}
-				else 
+						else if(g_bGrabbingAttack2[client])	 
+						{
+							g_bGrabbingAttack2[client] = false;
+						}
+					}
+				}				
+			}
+			else 
+			{
+				if(IsValidEntity(g_iGrabbingEntity[client][0]))	
 				{
-					if(IsValidEntity(g_iGrabbingEntity[client][0]))	
+					if(IsPropBuggedDoor(g_iGrabbingEntity[client][0])) //Respawn the bugged door
 					{
-						g_iGrabbingEntity[client][0] = -1;
-						StopSound(client, SNDCHAN_AUTO, SOUND_LOOP);
-						EmitSoundToAll(SOUND_DROP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
-					} 
-					ResetClientAttribute(client);
-				}
-			//}
+						PhysicsGun_RespawnProp(client, g_iGrabbingEntity[client][0]); //Respawn (Copy) the door
+					}
+					StopSound(client, SNDCHAN_AUTO, SOUND_LOOP);
+					EmitSoundToAll(SOUND_DROP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
+					g_iGrabbingEntity[client][0] = -1; //Set grab entity to NULL
+				} 
+				ResetClientAttribute(client);
+			}
 		}
 		else 
 		{
@@ -533,8 +542,9 @@ int PhysicsGun_ChangeToPropPhysics(int client, int iEntity)
 			{
 				Phys_EnableGravity(iNewEntity, true);
 				Phys_EnableMotion(iNewEntity, true);
-				SetHudTextParams(0.8, 0.7, 3.0, 255, 215, 0, 255, 1, 6.0, 0.5, 1.5);
-				ShowSyncHudText(client, g_hHud, "Prop unfreezed");
+				//SetHudTextParams(0.8, 0.7, 3.0, 255, 215, 0, 255, 1, 6.0, 0.5, 1.5);
+				//ShowSyncHudText(client, g_hHud, "Prop unfreezed");
+				PrintHintText(client, "Prop unfreezed");
 			}
 		}
 		return iNewEntity;
@@ -542,6 +552,88 @@ int PhysicsGun_ChangeToPropPhysics(int client, int iEntity)
 	return -1;
 }
 
+bool IsPropBuggedDoor(int iEntity) //For reload bug door
+{
+	if(IsValidEntity(iEntity))
+	{
+		char szModel[64];
+		GetEntPropString(iEntity, Prop_Data, "m_ModelName", szModel, sizeof(szModel));
+		if(StrEqual(szModel, "models/combine_gate_citizen.mdl") 
+		||	StrEqual(szModel, "models/combine_gate_Vehicle.mdl") 
+		||	StrEqual(szModel, "models/props_doors/doorKLab01.mdl") 
+		|| StrEqual(szModel, "models/props_lab/elevatordoor.mdl") 
+		||  StrEqual(szModel, "models/props_lab/RavenDoor.mdl"))	
+			return true;
+	}
+	return false;
+}
+
+int PhysicsGun_RespawnProp(int client, int iEntity) //For reload bug door
+{
+	//Get Value-----------
+	float fOrigin[3], fAngles[3], fSize;
+	char szModel[64], szName[128], szClass[32];
+	int iCollision, iRed, iGreen, iBlue, iAlpha, iSkin;
+	RenderFx EntityRenderFx;
+	
+	GetEntityClassname(iEntity, szClass, sizeof(szClass));
+	GetEntPropString(iEntity, Prop_Data, "m_ModelName", szModel, sizeof(szModel));
+	GetEntPropVector(iEntity, Prop_Send, "m_vecOrigin", fOrigin);
+	GetEntPropVector(iEntity, Prop_Data, "m_angRotation", fAngles);
+	iCollision = GetEntProp(iEntity, Prop_Data, "m_CollisionGroup", 4);
+	fSize = GetEntPropFloat(iEntity, Prop_Send, "m_flModelScale");
+	GetEntityRenderColor(iEntity, iRed, iGreen, iBlue, iAlpha);
+	EntityRenderFx = GetEntityRenderFx(iEntity);
+		
+	iSkin = GetEntProp(iEntity, Prop_Send, "m_nSkin");
+	GetEntPropString(iEntity, Prop_Data, "m_iName", szName, sizeof(szName));
+	//--------------------
+	int iNewEntity = CreateEntityByName("prop_dynamic");
+	
+	if (iNewEntity > MaxClients && IsValidEntity(iNewEntity))
+	{
+		SetEntProp(iNewEntity, Prop_Send, "m_nSolidType", 6);
+		//SetEntProp(iNewEntity, Prop_Data, "m_nSolidType", 6);
+		
+		Build_SetLimit(client, -1);
+		if (Build_RegisterEntityOwner(iNewEntity, client))
+		{
+			if (!IsModelPrecached(szModel))
+				PrecacheModel(szModel);
+			
+			DispatchKeyValue(iNewEntity, "model", szModel);
+			TeleportEntity(iNewEntity, fOrigin, fAngles, NULL_VECTOR);
+			DispatchSpawn(iNewEntity);
+			SetEntProp(iNewEntity, Prop_Data, "m_CollisionGroup", iCollision);
+			SetEntPropFloat(iNewEntity, Prop_Send, "m_flModelScale", fSize);
+			if(iAlpha < 255)	SetEntityRenderMode(iNewEntity, RENDER_TRANSCOLOR);
+			else	SetEntityRenderMode(iNewEntity, RENDER_NORMAL);
+			SetEntityRenderColor(iNewEntity, iRed, iGreen, iBlue, iAlpha);
+			SetEntityRenderFx(iNewEntity, EntityRenderFx);
+			SetEntProp(iNewEntity, Prop_Send, "m_nSkin", iSkin);
+			
+			
+			
+			if(StrContains(szName, "door") == -1)	
+			{
+				Format(szName, sizeof(szName), "door%i", GetRandomInt(1000, 5000));
+			}	
+			//SetEntPropString(iNewEntity, Prop_Data, "m_iName", szName);	
+			DispatchKeyValue(iNewEntity, "targetname", szName);
+			SetVariantString(szName);
+			
+						
+			char szFormatStr[64];
+			Format(szFormatStr, sizeof(szFormatStr), "%s,setanimation,open,0", szName);
+			DispatchKeyValue(iNewEntity, "OnHealthChanged", szFormatStr);
+			Format(szFormatStr, sizeof(szFormatStr), "%s,setanimation,close,4", szName);
+			DispatchKeyValue(iNewEntity, "OnHealthChanged", szFormatStr);
+			AcceptEntityInput(iEntity, "Kill");
+		}
+		return iNewEntity;
+	}
+	return -1;
+}
 
 void ResetClientAttribute(int client)
 {

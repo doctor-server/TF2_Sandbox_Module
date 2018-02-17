@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "1.5"
+#define PLUGIN_VERSION "1.6"
 
 #include <sourcemod>
 #include <sdktools>
@@ -147,12 +147,16 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					{
 						if(TF2Items_CheckWeapon(iEntityIndex))
 						{
-			    			TF2Items_GiveWeapon(client, iEntityIndex);
-			    			if(GetEntProp(GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon"), Prop_Send, "m_iItemDefinitionIndex") != 129)
-			    			{
-			    				SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", GetPlayerWeaponSlot(client, 1));
-			    			}
-			    		}
+							int PhysicsGun = TF2Items_GiveWeapon(client, iEntityIndex);
+							if(IsValidEntity(PhysicsGun))
+							{
+								SetEntProp(PhysicsGun, Prop_Send, "m_nSkin", 1); //1 = PhysicsGun 0 = GravityGun
+							}
+							if(GetEntProp(GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon"), Prop_Send, "m_iItemDefinitionIndex") != 129)
+							{
+								SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", GetPlayerWeaponSlot(client, 1));
+							}
+						}
 					}
 					
 				}
