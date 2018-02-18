@@ -498,9 +498,10 @@ int PhysicsGun_ChangeToPropPhysics(int client, int iEntity)
 	//Get Value-----------
 	float fOrigin[3], fAngles[3], fSize;
 	char szModel[64], szName[128];
-	int iCollision, iRed, iGreen, iBlue, iAlpha, iSkin;
+	int iCollision, iRed, iGreen, iBlue, iAlpha, iSkin, iOwner;
 	RenderFx EntityRenderFx;
 	
+	iOwner = Build_ReturnEntityOwner(iEntity);
 	GetEntPropString(iEntity, Prop_Data, "m_ModelName", szModel, sizeof(szModel));
 	GetEntPropVector(iEntity, Prop_Send, "m_vecOrigin", fOrigin);
 	GetEntPropVector(iEntity, Prop_Data, "m_angRotation", fAngles);
@@ -519,8 +520,8 @@ int PhysicsGun_ChangeToPropPhysics(int client, int iEntity)
 		SetEntProp(iNewEntity, Prop_Send, "m_nSolidType", 6);
 		SetEntProp(iNewEntity, Prop_Data, "m_nSolidType", 6);
 		
-		Build_SetLimit(client, -1);
-		if (Build_RegisterEntityOwner(iNewEntity, client))
+		Build_SetLimit(iOwner, -1);
+		if (Build_RegisterEntityOwner(iNewEntity, iOwner))
 		{
 			if (!IsModelPrecached(szModel))
 				PrecacheModel(szModel);
