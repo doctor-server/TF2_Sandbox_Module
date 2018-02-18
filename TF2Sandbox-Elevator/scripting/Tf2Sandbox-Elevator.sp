@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "4.5"
+#define PLUGIN_VERSION "4.6"
 
 #include <sourcemod>
 #include <sdktools>
@@ -33,7 +33,7 @@ int g_iElevatorAction[MAXPLAYERS + 1];
 float g_fElevatorLowest[MAXPLAYERS + 1];
 float g_fElevatorHighest[MAXPLAYERS + 1];
 
-bool g_fElevatorAuto[MAXPLAYERS + 1];
+bool g_bElevatorAuto[MAXPLAYERS + 1];
 int g_iElevatorAutoAction[MAXPLAYERS + 1];
 
 int g_iCoolDown[MAXPLAYERS + 1] = 0;
@@ -70,7 +70,7 @@ public void OnClientPutInServer(int client)
 	g_iElevatorIndex[client][1] = -1;
 
 	g_iElevatorAction[client] = -1;
-	g_fElevatorAuto[client] = false;
+	g_bElevatorAuto[client] = false;
 	g_iElevatorAutoAction[client] = -1;
 	
 	g_iCoolDown[client] = 0;
@@ -82,7 +82,7 @@ public void OnClientDisconnect(int client)
 	g_iElevatorIndex[client][1] = -1;
 	
 	g_iElevatorAction[client] = -1;
-	g_fElevatorAuto[client] = false;
+	g_bElevatorAuto[client] = false;
 	g_iElevatorAutoAction[client] = -1;
 }
 
@@ -94,7 +94,7 @@ public Action Command_ElevatorMenu(int client, int args) //HackMenu
 	Format(menuinfo, sizeof(menuinfo), "TF2 Sandbox - Elevator Control Panel v%s\n Highest: %f\n Lowest: %f", PLUGIN_VERSION, g_fElevatorHighest[client], g_fElevatorLowest[client]);
 	menu.SetTitle(menuinfo);
 	
-	if (IsValidEntity(g_iElevatorIndex[client][0]) && !g_fElevatorAuto[client])
+	if (IsValidEntity(g_iElevatorIndex[client][0]) && !g_bElevatorAuto[client])
 	{
 		Format(menuinfo, sizeof(menuinfo), " Delete the Elevator", client);
 		menu.AddItem("DELETE", menuinfo);
@@ -111,7 +111,7 @@ public Action Command_ElevatorMenu(int client, int args) //HackMenu
 	}
 	else
 	{
-		if(g_fElevatorAuto[client])
+		if(g_bElevatorAuto[client])
 		{
 			Format(menuinfo, sizeof(menuinfo), " Delete the Elevator", client);
 			menu.AddItem("BUILD", menuinfo, ITEMDRAW_DISABLED);
@@ -136,7 +136,7 @@ public Action Command_ElevatorMenu(int client, int args) //HackMenu
 	if(IsValidEntity(g_iElevatorIndex[client][0]))
 	{
 		Format(menuinfo, sizeof(menuinfo), " Automatic move", client);
-		if(g_fElevatorAuto[client])	Format(menuinfo, sizeof(menuinfo), " Automatic move: ON", client);
+		if(g_bElevatorAuto[client])	Format(menuinfo, sizeof(menuinfo), " Automatic move: ON", client);
 		else Format(menuinfo, sizeof(menuinfo), " Automatic move: OFF", client);
 		menu.AddItem("AUTO", menuinfo);
  	}
@@ -169,7 +169,7 @@ public int Handler_ElevatorMenu(Menu menu, MenuAction action, int client, int se
 					g_fElevatorHighest[client] = 999999.0;
 					g_fElevatorLowest[client] = -999999.0;
 					g_iElevatorAction[client] = 0;
-					g_fElevatorAuto[client] = false;
+					g_bElevatorAuto[client] = false;
 					g_iElevatorIndex[client][0] = BuildElevator(client, fAimPos);
 					
 					g_iCoolDown[client] = 1;
@@ -193,7 +193,7 @@ public int Handler_ElevatorMenu(Menu menu, MenuAction action, int client, int se
 				g_fElevatorHighest[client] = 999999.0;
 				g_fElevatorLowest[client] = -999999.0;
 				g_iElevatorAction[client] = 0;
-				g_fElevatorAuto[client] = false;
+				g_bElevatorAuto[client] = false;
 				Build_SetLimit(client, -1);
 			}		
 		}
@@ -230,10 +230,10 @@ public int Handler_ElevatorMenu(Menu menu, MenuAction action, int client, int se
 			else if (StrEqual(info, "STOP"))	g_iElevatorAction[client] = 0;
 			else if (StrEqual(info, "AUTO"))
 			{
-				if(g_fElevatorAuto[client]) g_fElevatorAuto[client] = false;
+				if(g_bElevatorAuto[client]) g_bElevatorAuto[client] = false;
 				else	
 				{
-					g_fElevatorAuto[client] = true;
+					g_bElevatorAuto[client] = true;
 					g_iElevatorAutoAction[client] = 0;
 					CreateTimer(5.0, Timer_ElevatorAction, client);
 				}
@@ -268,7 +268,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			{
 				float fOrigin[3];
 				GetEntPropVector(g_iElevatorIndex[client][0], Prop_Send, "m_vecOrigin", fOrigin);
-				if(g_fElevatorAuto[client])
+				if(g_bElevatorAuto[client])
 				{
 					if((g_fElevatorHighest[client] <= fOrigin[2] && g_iElevatorAutoAction[client] == 1) || (g_fElevatorLowest[client] <= fOrigin[2]) && g_iElevatorAutoAction[client] == 3) //Down
 					{
@@ -336,6 +336,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		else if(g_iElevatorIndex[client][0] != -1)	
 		{
 			if(IsValidEntity(g_iElevatorIndex[client][1])) AcceptEntityInput(g_iElevatorIndex[client][1], "kill");
+			g_bElevatorAuto[client] = false;
 			g_iElevatorIndex[client][1] = -1;
 			g_iElevatorIndex[client][0] = -1;
 		}
