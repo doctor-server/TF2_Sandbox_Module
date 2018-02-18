@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "2.0"
+#define PLUGIN_VERSION "2.5"
 
 #include <sourcemod>
 #include <sdktools>
@@ -67,7 +67,7 @@ public void OnPluginStart()
 	g_hHud = CreateHudSynchronizer();
 }
 
-public Action Command_EquipPhysicsGun(int client, int args)
+public Action Command_EquipPhysicsGun(int client, int args) //Give PhysicsGun v2 to client
 {
 	if(IsValidClient(client) && IsPlayerAlive(client))
 	{
@@ -106,12 +106,7 @@ public Action Command_EquipPhysicsGun(int client, int args)
 }
 
 //-----[ Start and End ]---------------------------(
-public void OnAllPluginsLoaded() 
-{
-	CreateTimer(0.1, Timer_CreateWeapon, 0);
-}
-
-public void OnMapStart()
+public void OnMapStart() //Precache Sound and Model
 {
 	g_ModelIndex = PrecacheModel(MODEL_PHYSICSLASER);
 	g_HaloIndex = PrecacheModel(MODEL_HALOINDEX);
@@ -471,7 +466,7 @@ public void OnPluginEnd()
 	}
 }
 //---------------------------------
-void SetEntityGlows(float fOrigin[3], float fEOrigin[3], int team)
+void SetEntityGlows(float fOrigin[3], float fEOrigin[3], int team) //Set the Glow and laser
 {
 	float fEndPosition[3];
 	fOrigin[2] -= 10.0;
@@ -493,7 +488,7 @@ void SetEntityGlows(float fOrigin[3], float fEOrigin[3], int team)
 	fOrigin[2] += 25.0;
 }
 
-int PhysicsGun_ChangeToPropPhysics(int client, int iEntity)
+int PhysicsGun_ChangeToPropPhysics(int client, int iEntity) //Change To prop_physics
 {
 	//Get Value-----------
 	float fOrigin[3], fAngles[3], fSize;

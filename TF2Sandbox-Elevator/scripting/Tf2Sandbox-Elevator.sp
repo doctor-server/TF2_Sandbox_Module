@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "3.6"
+#define PLUGIN_VERSION "3.8"
 
 #include <sourcemod>
 #include <sdktools>
@@ -259,16 +259,16 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	if (!IsValidClient(client))
 		return;
 	
-	if(IsValidEdict(g_iElevatorIndex[client][0]))
+	if(IsValidEntity(g_iElevatorIndex[client][0]))
 	{
-		float fOrigin[3];
-		GetEntPropVector(g_iElevatorIndex[client][0], Prop_Send, "m_vecOrigin", fOrigin);
-		float fSize = GetEntPropFloat(g_iElevatorIndex[client][0], Prop_Send, "m_flModelScale");
+		//float fSize = GetEntPropFloat(g_iElevatorIndex[client][0], Prop_Send, "m_flModelScale");
 		char szModel[255];
 		GetEntPropString(g_iElevatorIndex[client][0], Prop_Data, "m_ModelName", szModel, sizeof(szModel));
 		
-		if(StrEqual(szModel, "models/props_trainyard/crane_platform001.mdl") && fSize == 0.435314)
+		if(StrEqual(szModel, "models/props_trainyard/crane_platform001.mdl"))// && fSize == 0.435314)
 		{
+			float fOrigin[3];
+			GetEntPropVector(g_iElevatorIndex[client][0], Prop_Send, "m_vecOrigin", fOrigin);
 			if(g_fElevatorAuto[client])
 			{
 				if((g_fElevatorHighest[client] <= fOrigin[2] && g_iElevatorAutoAction[client] == 1) || (g_fElevatorLowest[client] <= fOrigin[2]) && g_iElevatorAutoAction[client] == 3) //Down
@@ -324,6 +324,19 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				g_iElevatorAction[client] = -1;
 			}
 		}
+		else
+		{
+			if(IsValidEntity(g_iElevatorIndex[client][1])) AcceptEntityInput(g_iElevatorIndex[client][1], "kill");
+			g_iElevatorIndex[client][1] = -1;
+			if(IsValidEntity(g_iElevatorIndex[client][0])) AcceptEntityInput(g_iElevatorIndex[client][0], "kill");
+			g_iElevatorIndex[client][0] = -1;
+		}
+	}
+	else if(g_iElevatorIndex[client][0] != -1)	
+	{
+		if(IsValidEntity(g_iElevatorIndex[client][1])) AcceptEntityInput(g_iElevatorIndex[client][1], "kill");
+		g_iElevatorIndex[client][1] = -1;
+		g_iElevatorIndex[client][0] = -1;
 	}
 	
 	if (IsValidClient(client) && IsPlayerAlive(client) && GetEntityMoveType(client) != MOVETYPE_NOCLIP && IsPlayerStuckInEnt(client))
@@ -451,7 +464,7 @@ stock bool IsPlayerStuckInEnt(int client)
 
 public bool TraceRayHitOnlyEnt(int entity, int contentsMask)
 {
-	if (IsValidEdict(entity) && GetEntProp(entity, Prop_Data, "m_CollisionGroup", 4) != 2)
+	if (IsValidEntity(entity) && GetEntProp(entity, Prop_Data, "m_CollisionGroup", 4) != 2)
 	{
 		char szClass[64];
 		GetEdictClassname(entity, szClass, sizeof(szClass));
