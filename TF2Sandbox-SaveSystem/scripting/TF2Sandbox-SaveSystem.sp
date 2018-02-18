@@ -16,7 +16,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "8.3a"
+#define PLUGIN_VERSION "8.3b"
 
 #include <sourcemod>
 #include <sdktools>
@@ -170,6 +170,8 @@ public void OnMapStart()
 	
 	CreateTimer(GetConVarFloat(cviAdvertisement), Timer_Ads, 0, TIMER_FLAG_NO_MAPCHANGE);
 	CreateTimer(3.0, Timer_LoadMap, 0, TIMER_FLAG_NO_MAPCHANGE);
+	ServerCommand("sm_cvar mp_waitingforplayers_cancel 1");
+	
 	TagsCheck("SandBox_Addons");
 }
 

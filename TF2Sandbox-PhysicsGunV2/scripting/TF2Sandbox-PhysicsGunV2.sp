@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "2.5"
+#define PLUGIN_VERSION "2.5a"
 
 #include <sourcemod>
 #include <sdktools>
@@ -75,33 +75,19 @@ public Action Command_EquipPhysicsGun(int client, int args) //Give PhysicsGun v2
 		if(IsValidEntity(iWeapon)) SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iWeapon);
 		SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", GetPlayerWeaponSlot(client, 1));
 		
-		if(TF2Items_CheckWeapon(g_iPhysicGunIndex))
-		{
-			int PhysicsGun = TF2Items_GiveWeapon(client, g_iPhysicGunIndex);
-			if(IsValidEntity(PhysicsGun))
-			{
-				SetEntProp(PhysicsGun, Prop_Send, "m_nSkin", 1); //1 = PhysicsGun 0 = GravityGun
-			}
-			Build_PrintToChat(client, "You have equip a Physics Gun v2!");
-			Build_PrintToChat(client, "Your Physics Gun will be in the Secondary Slot.");
-			SendDialogToOne(client, 240, 248, 255, "You have equip a Physics Gun v2!");
-			//PrintHintText(client, "You have equip a Physics Gun v2!");
-		}
-		else 
+		if(!TF2Items_CheckWeapon(g_iPhysicGunIndex))
 		{
 			TF2Items_CreateWeapon(g_iPhysicGunIndex, "tf_weapon_builder", g_iPhysicGunWeaponIndex, 1, 9, 99, "", -1, MODEL_PHYSICSGUN, true);
-			if(TF2Items_CheckWeapon(g_iPhysicGunIndex))
-			{
-				int PhysicsGun = TF2Items_GiveWeapon(client, g_iPhysicGunIndex);
-				if(IsValidEntity(PhysicsGun))
-				{
-					SetEntProp(PhysicsGun, Prop_Send, "m_nSkin", 1); //1 = PhysicsGun 2= GravityGun
-				}
-				Build_PrintToChat(client, "You have equip a Physics Gun v2!");
-				Build_PrintToChat(client, "Your Physics Gun will be in the Secondary Slot.");
-				SendDialogToOne(client, 240, 248, 255, "You have equip a Physics Gun v2!");
-			}	
 		}
+		
+		int PhysicsGun = TF2Items_GiveWeapon(client, g_iPhysicGunIndex);
+		if(IsValidEntity(PhysicsGun))
+		{
+			SetEntProp(PhysicsGun, Prop_Send, "m_nSkin", 1); //1 = PhysicsGun 0 = GravityGun
+		}
+		Build_PrintToChat(client, "You have equip a Physics Gun v2!");
+		Build_PrintToChat(client, "Your Physics Gun will be in the Secondary Slot.");
+		SendDialogToOne(client, 240, 248, 255, "You have equip a Physics Gun v2!");	
 	}
 }
 

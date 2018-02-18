@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "3.8"
+#define PLUGIN_VERSION "4.5"
 
 #include <sourcemod>
 #include <sdktools>
@@ -256,95 +256,97 @@ public int Handler_ElevatorMenu(Menu menu, MenuAction action, int client, int se
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon)//@
 {
-	if (!IsValidClient(client))
-		return;
-	
-	if(IsValidEntity(g_iElevatorIndex[client][0]))
+	if(IsValidClient(client))
 	{
-		//float fSize = GetEntPropFloat(g_iElevatorIndex[client][0], Prop_Send, "m_flModelScale");
-		char szModel[255];
-		GetEntPropString(g_iElevatorIndex[client][0], Prop_Data, "m_ModelName", szModel, sizeof(szModel));
-		
-		if(StrEqual(szModel, "models/props_trainyard/crane_platform001.mdl"))// && fSize == 0.435314)
+		if(IsValidEntity(g_iElevatorIndex[client][0]))
 		{
-			float fOrigin[3];
-			GetEntPropVector(g_iElevatorIndex[client][0], Prop_Send, "m_vecOrigin", fOrigin);
-			if(g_fElevatorAuto[client])
+			//float fSize = GetEntPropFloat(g_iElevatorIndex[client][0], Prop_Send, "m_flModelScale");
+			char szModel[255];
+			GetEntPropString(g_iElevatorIndex[client][0], Prop_Data, "m_ModelName", szModel, sizeof(szModel));
+			
+			if(StrEqual(szModel, "models/props_trainyard/crane_platform001.mdl"))// && fSize == 0.435314)
 			{
-				if((g_fElevatorHighest[client] <= fOrigin[2] && g_iElevatorAutoAction[client] == 1) || (g_fElevatorLowest[client] <= fOrigin[2]) && g_iElevatorAutoAction[client] == 3) //Down
+				float fOrigin[3];
+				GetEntPropVector(g_iElevatorIndex[client][0], Prop_Send, "m_vecOrigin", fOrigin);
+				if(g_fElevatorAuto[client])
 				{
-					g_iElevatorAutoAction[client] = 3;
-					fOrigin[2] -= 2.0;
-					TeleportEntity(g_iElevatorIndex[client][0], fOrigin, NULL_VECTOR, NULL_VECTOR);
-					EmitSoundToAll(SOUND_START, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
-					
-					if (g_fElevatorLowest[client] >= fOrigin[2])
+					if((g_fElevatorHighest[client] <= fOrigin[2] && g_iElevatorAutoAction[client] == 1) || (g_fElevatorLowest[client] <= fOrigin[2]) && g_iElevatorAutoAction[client] == 3) //Down
 					{
-						g_iElevatorAutoAction[client] = 0;
-						CreateTimer(10.0, Timer_ElevatorAction, client);
+						g_iElevatorAutoAction[client] = 3;
+						fOrigin[2] -= 2.0;
+						TeleportEntity(g_iElevatorIndex[client][0], fOrigin, NULL_VECTOR, NULL_VECTOR);
+						EmitSoundToAll(SOUND_START, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
+						
+						if (g_fElevatorLowest[client] >= fOrigin[2])
+						{
+							g_iElevatorAutoAction[client] = 0;
+							CreateTimer(10.0, Timer_ElevatorAction, client);
+						}
 					}
+					else if((g_fElevatorLowest[client] >= fOrigin[2] && g_iElevatorAutoAction[client] == 1) || (g_fElevatorHighest[client] >= fOrigin[2]) && g_iElevatorAutoAction[client] == 2) //UP
+					{
+						g_iElevatorAutoAction[client] = 2;
+						fOrigin[2] += 2.0;
+						TeleportEntity(g_iElevatorIndex[client][0], fOrigin, NULL_VECTOR, NULL_VECTOR);
+						EmitSoundToAll(SOUND_START, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
+						
+						if (g_fElevatorHighest[client] <= fOrigin[2])
+						{
+							g_iElevatorAutoAction[client] = 0;
+							CreateTimer(10.0, Timer_ElevatorAction, client);
+						}
+					}
+					else if(g_iElevatorAutoAction[client] == 0)
+					{
+						DamageDoor(g_iElevatorIndex[client][0], client);
+						EmitSoundToAll(SOUND_STOP, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
+						EmitSoundToAll(SOUND_STOPHORN, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);		
+						g_iElevatorAutoAction[client] = -1;
+					}
+					//PrintCenterText(client, "Value: %i", g_iElevatorAutoAction[client]); //DeBug -1 = waiting, 0 = stop, 1 = Ready move, 2 = UP 3 = Down
 				}
-				else if((g_fElevatorLowest[client] >= fOrigin[2] && g_iElevatorAutoAction[client] == 1) || (g_fElevatorHighest[client] >= fOrigin[2]) && g_iElevatorAutoAction[client] == 2) //UP
+				else if(g_iElevatorAction[client] == 1 && g_fElevatorHighest[client] >= fOrigin[2])
 				{
-					g_iElevatorAutoAction[client] = 2;
 					fOrigin[2] += 2.0;
 					TeleportEntity(g_iElevatorIndex[client][0], fOrigin, NULL_VECTOR, NULL_VECTOR);
 					EmitSoundToAll(SOUND_START, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
-					
-					if (g_fElevatorHighest[client] <= fOrigin[2])
-					{
-						g_iElevatorAutoAction[client] = 0;
-						CreateTimer(10.0, Timer_ElevatorAction, client);
-					}
 				}
-				else if(g_iElevatorAutoAction[client] == 0)
+				else if(g_iElevatorAction[client] == 2 && g_fElevatorLowest[client] <= fOrigin[2])
 				{
-					EmitSoundToAll(SOUND_STOP, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
-					EmitSoundToAll(SOUND_STOPHORN, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);		
-					g_iElevatorAutoAction[client] = -1;
+					fOrigin[2] -= 2.0;
+					TeleportEntity(g_iElevatorIndex[client][0], fOrigin, NULL_VECTOR, NULL_VECTOR);
+					EmitSoundToAll(SOUND_START, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
 				}
-				//PrintCenterText(client, "Value: %i", g_iElevatorAutoAction[client]); //DeBug -1 = waiting, 0 = stop, 1 = Ready move, 2 = UP 3 = Down
+				else if((g_iElevatorAction[client] == 0 || g_fElevatorHighest[client] >= fOrigin[2] || g_fElevatorLowest[client] <= fOrigin[2]) && g_iElevatorAction[client] != -1)
+				{
+					DamageDoor(g_iElevatorIndex[client][0], client);
+					EmitSoundToAll(SOUND_STOP, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
+					EmitSoundToAll(SOUND_STOPHORN, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);			
+					g_iElevatorAction[client] = -1;
+				}
 			}
-			else if(g_iElevatorAction[client] == 1 && g_fElevatorHighest[client] >= fOrigin[2])
+			else
 			{
-				fOrigin[2] += 2.0;
-				TeleportEntity(g_iElevatorIndex[client][0], fOrigin, NULL_VECTOR, NULL_VECTOR);
-				EmitSoundToAll(SOUND_START, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
-			}
-			else if(g_iElevatorAction[client] == 2 && g_fElevatorLowest[client] <= fOrigin[2])
-			{
-				fOrigin[2] -= 2.0;
-				TeleportEntity(g_iElevatorIndex[client][0], fOrigin, NULL_VECTOR, NULL_VECTOR);
-				EmitSoundToAll(SOUND_START, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.15);
-			}
-			else if((g_iElevatorAction[client] == 0 || g_fElevatorHighest[client] >= fOrigin[2] || g_fElevatorLowest[client] <= fOrigin[2]) && g_iElevatorAction[client] != -1)
-			{
-				EmitSoundToAll(SOUND_STOP, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
-				EmitSoundToAll(SOUND_STOPHORN, g_iElevatorIndex[client][0], SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);			
-				g_iElevatorAction[client] = -1;
+				if(IsValidEntity(g_iElevatorIndex[client][1])) AcceptEntityInput(g_iElevatorIndex[client][1], "kill");
+				g_iElevatorIndex[client][1] = -1;
+				if(IsValidEntity(g_iElevatorIndex[client][0])) AcceptEntityInput(g_iElevatorIndex[client][0], "kill");
+				g_iElevatorIndex[client][0] = -1;
 			}
 		}
-		else
+		else if(g_iElevatorIndex[client][0] != -1)	
 		{
 			if(IsValidEntity(g_iElevatorIndex[client][1])) AcceptEntityInput(g_iElevatorIndex[client][1], "kill");
 			g_iElevatorIndex[client][1] = -1;
-			if(IsValidEntity(g_iElevatorIndex[client][0])) AcceptEntityInput(g_iElevatorIndex[client][0], "kill");
 			g_iElevatorIndex[client][0] = -1;
 		}
-	}
-	else if(g_iElevatorIndex[client][0] != -1)	
-	{
-		if(IsValidEntity(g_iElevatorIndex[client][1])) AcceptEntityInput(g_iElevatorIndex[client][1], "kill");
-		g_iElevatorIndex[client][1] = -1;
-		g_iElevatorIndex[client][0] = -1;
-	}
-	
-	if (IsValidClient(client) && IsPlayerAlive(client) && GetEntityMoveType(client) != MOVETYPE_NOCLIP && IsPlayerStuckInEnt(client))
-	{
-		float iPosition[3];
-		GetClientAbsOrigin(client, iPosition);
-		iPosition[2] += 5.0;
-		TeleportEntity(client, iPosition, NULL_VECTOR, NULL_VECTOR);
+		
+		if (IsPlayerAlive(client) && GetEntityMoveType(client) != MOVETYPE_NOCLIP && IsPlayerStuckInEnt(client))
+		{
+			float iPosition[3];
+			GetClientAbsOrigin(client, iPosition);
+			iPosition[2] += 5.0;
+			TeleportEntity(client, iPosition, NULL_VECTOR, NULL_VECTOR);
+		}
 	}
 }
 
@@ -397,7 +399,7 @@ public bool TraceEntityFilterPlayer(int entity, int contentsMask)
 
 int BuildElevator(int iBuilder, float fOrigin[3])
 {
-	int iElevatorBody = CreateEntityByName("prop_dynamic_override");
+	int iElevatorBody = CreateEntityByName("prop_dynamic_override");//CreateEntityByName("prop_dynamic_override");
 	if (iElevatorBody > MaxClients && IsValidEntity(iElevatorBody))
 	{
 		SetEntProp(iElevatorBody, Prop_Send, "m_nSolidType", 6);
@@ -494,4 +496,43 @@ void TagsCheck(const char[] tag) //TF2Stat.sp
 		GetConVarString(hTags, tags, sizeof(tags));
 	}
 	CloseHandle(hTags);
+}
+
+void DamageDoor(int iElevator, int client)
+{
+	if(IsValidEntity(iElevator))
+	{
+		float fPos[3], fPosDoor[3];
+		GetEntPropVector(iElevator, Prop_Send, "m_vecOrigin", fPos);
+
+		int ent = -1;
+		while ((ent = FindEntityByClassname(ent, "prop_dynamic")) != -1)
+   		{
+   			if (IsPropDoor(ent))
+   			{
+   				GetEntPropVector(ent, Prop_Send, "m_vecOrigin", fPosDoor);
+   				if(GetVectorDistance(fPos, fPosDoor) < 90.0)
+   				{
+   					SDKHooks_TakeDamage(ent, client, client, 0.01, DMG_BLAST);
+   				}
+   			}
+   		}
+   	}
+}
+
+bool IsPropDoor(int iEntity) 
+{
+	if(IsValidEntity(iEntity))
+	{
+		char szModel[64];
+		GetEntPropString(iEntity, Prop_Data, "m_ModelName", szModel, sizeof(szModel));
+		if(StrEqual(szModel, "models/combine_gate_citizen.mdl") 
+		||	StrEqual(szModel, "models/combine_gate_Vehicle.mdl") 
+		||	StrEqual(szModel, "models/props_doors/doorKLab01.mdl") 
+		|| StrEqual(szModel, "models/props_lab/elevatordoor.mdl") 
+		||  StrEqual(szModel, "models/props_lab/RavenDoor.mdl")
+		||  StrEqual(szModel, "models/props_lab/blastdoor001c.mdl"))	
+			return true;
+	}
+	return false;
 }
