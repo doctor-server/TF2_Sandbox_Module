@@ -16,7 +16,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "8.3b"
+#define PLUGIN_VERSION "8.3c"
 
 #include <sourcemod>
 #include <sdktools>
@@ -188,7 +188,8 @@ public void OnClientPutInServer(int client)
 	
 	//Cache system
 	g_bIsClientInServer[client] = true;
-	CreateTimer(5.0, Timer_Load, client);
+	if(g_bWaitingForPlayers)	CreateTimer(30.0, Timer_Load, client);
+	else CreateTimer(5.0, Timer_Load, client);
 	//------------
 }
 
