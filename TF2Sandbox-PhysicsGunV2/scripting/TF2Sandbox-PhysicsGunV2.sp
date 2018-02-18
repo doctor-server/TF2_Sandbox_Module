@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "2.5a"
+#define PLUGIN_VERSION "2.7"
 
 #include <sourcemod>
 #include <sdktools>
@@ -56,7 +56,7 @@ bool g_bGrabbingAttack2[MAXPLAYERS + 1];
 public void OnPluginStart()
 {
 	CreateConVar("sm_tf2sb_pg_version", PLUGIN_VERSION, "", FCVAR_SPONLY | FCVAR_NOTIFY);
-	g_cvGrabOtherProp = CreateConVar("sm_tf2sb_pg_grabothers", "0", "0 - Can Not grab others props, 1 - Can grab other props", 0, true, 0.0, true, 1.0);
+	g_cvGrabOtherProp = CreateConVar("sm_tf2sb_pg_grabothers", "0", "0 - Can Not grab others props, 1 - Can grab other props(Admin Only), 2 - Everyone can grab other props", 0, true, 0.0, true, 2.0);
 	g_cvPhysics = CreateConVar("sm_tf2sb_pg_enablephysics", "1", "0 - Disable Physics function, 1 - Enable Physics function(Admin Only)", 0, true, 0.0, true, 1.0);
 	g_cvGrabPlayer = CreateConVar("sm_tf2sb_pg_enablegrabplayer", "1", "0 - Disable Grab Player, 1 - Enable Grab Player(Admin Only), 2 - Everyone can Grab Player(Dangerous!)", 0, true, 0.0, true, 2.0);
 	
@@ -171,7 +171,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			if(buttons & IN_ATTACK)//When In_Attack
 			{
 				//int iEntity = Build_ClientAimEntity(client, false, true);
-				if(IsValidEntity(iEntity) && (Build_ReturnEntityOwner(iEntity) == client || GetConVarBool(g_cvGrabOtherProp)) && !IsValidEntity(g_iGrabbingEntity[client][0])) //g_iGrabbingEntity[client][0] to iEntity when 
+				if(IsValidEntity(iEntity) && (Build_ReturnEntityOwner(iEntity) == client || ((GetConVarInt(g_cvGrabOtherProp) == 1 && CheckCommandAccess(client, "sm_admin", ADMFLAG_GENERIC)) || GetConVarInt(g_cvGrabOtherProp) == 2)) && !IsValidEntity(g_iGrabbingEntity[client][0])) //g_iGrabbingEntity[client][0] to iEntity when 
 				{
 					g_iGrabbingEntity[client][0] = iEntity; //Bind Entity
 					if(!TF2_HasGlow(g_iGrabbingEntity[client][0]) && !IsValidEntity(g_iGrabbingEntity[client][1])) g_iGrabbingEntity[client][1] = TF2_CreateGlow(iEntity, GetClientTeam(client));
