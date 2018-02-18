@@ -366,7 +366,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				{
 					if(IsPropBuggedDoor(g_iGrabbingEntity[client][0])) //Respawn the bugged door
 					{
-						PhysicsGun_RespawnProp(client, g_iGrabbingEntity[client][0]); //Respawn (Copy) the door
+						PhysicsGun_RespawnProp(g_iGrabbingEntity[client][0]); //Respawn (Copy) the door
 					}
 					StopSound(client, SNDCHAN_AUTO, SOUND_LOOP);
 					EmitSoundToAll(SOUND_DROP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
@@ -569,14 +569,15 @@ bool IsPropBuggedDoor(int iEntity) //For reload bug door
 	return false;
 }
 
-int PhysicsGun_RespawnProp(int client, int iEntity) //For reload bug door
+int PhysicsGun_RespawnProp(int iEntity) //For reload bug door
 {
 	//Get Value-----------
 	float fOrigin[3], fAngles[3], fSize;
 	char szModel[64], szName[128], szClass[32];
-	int iCollision, iRed, iGreen, iBlue, iAlpha, iSkin;
+	int iCollision, iRed, iGreen, iBlue, iAlpha, iSkin, iOwner;
 	RenderFx EntityRenderFx;
 	
+	iOwner = Build_ReturnEntityOwner(iEntity);
 	GetEntityClassname(iEntity, szClass, sizeof(szClass));
 	GetEntPropString(iEntity, Prop_Data, "m_ModelName", szModel, sizeof(szModel));
 	GetEntPropVector(iEntity, Prop_Send, "m_vecOrigin", fOrigin);
@@ -596,8 +597,8 @@ int PhysicsGun_RespawnProp(int client, int iEntity) //For reload bug door
 		SetEntProp(iNewEntity, Prop_Send, "m_nSolidType", 6);
 		//SetEntProp(iNewEntity, Prop_Data, "m_nSolidType", 6);
 		
-		Build_SetLimit(client, -1);
-		if (Build_RegisterEntityOwner(iNewEntity, client))
+		Build_SetLimit(iOwner, -1);
+		if (Build_RegisterEntityOwner(iNewEntity, iOwner))
 		{
 			if (!IsModelPrecached(szModel))
 				PrecacheModel(szModel);
