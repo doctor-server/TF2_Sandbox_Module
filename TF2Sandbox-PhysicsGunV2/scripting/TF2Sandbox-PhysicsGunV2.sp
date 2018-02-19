@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "2.7"
+#define PLUGIN_VERSION "4.0"
 
 #include <sourcemod>
 #include <sdktools>
@@ -52,6 +52,7 @@ int g_iGrabbingEntity[MAXPLAYERS + 1][3]; //0. Entity, 1. Glow entity index, 2
 float g_fGrabbingDistance[MAXPLAYERS + 1]; //MaxDistance
 float g_fGrabbingDifference[MAXPLAYERS + 1][3]; //Difference
 bool g_bGrabbingAttack2[MAXPLAYERS + 1];
+bool g_bGrabbingRotate[MAXPLAYERS + 1];
 
 public void OnPluginStart()
 {
@@ -132,6 +133,7 @@ public void OnClientPutInServer(int client)
 	g_iGrabbingEntity[client][1] = -1; //tf_glow
 	g_iGrabbingEntity[client][2] = -1;
 	g_fGrabbingDistance[client] = 0.0;
+	g_bGrabbingRotate[client] = false;
 }
 
 public void OnClientDisconnect(int client)
@@ -141,10 +143,11 @@ public void OnClientDisconnect(int client)
 	g_iGrabbingEntity[client][1] = -1; //tf_glow
 	g_iGrabbingEntity[client][2] = -1;
 	g_fGrabbingDistance[client] = 0.0;
+	g_bGrabbingRotate[client] = false;
 }
 //-------------------------------------------------)
 
-public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon)
+public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
 	if (!IsValidClient(client))
 		return;
@@ -186,6 +189,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					g_fGrabbingDifference[client][2] = fEOrigin[2] - fEndPosition[2];
 					
 					if(GetConVarBool(g_cvPhysics)) g_bGrabbingAttack2[client] = false;
+					g_bGrabbingRotate[client] = false;
 					
 					EmitSoundToAll(SOUND_PICKUP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
 					EmitSoundToAll(SOUND_LOOP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.5);
@@ -205,82 +209,184 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					g_fGrabbingDifference[client][2] = fEOrigin[2] - fEndPosition[2];
 					
 					if(GetConVarBool(g_cvPhysics)) g_bGrabbingAttack2[client] = false;
+					g_bGrabbingRotate[client] = false;
 					
 					EmitSoundToAll(SOUND_PICKUP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
 					EmitSoundToAll(SOUND_LOOP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.5);
 				}
 				
+				float fOrigin[3], fEOrigin[3], fEndPosition[3], fDummy[3];
+				GetClientEyePosition(client, fOrigin);
+				
 				if (IsValidEntity(g_iGrabbingEntity[client][0]))
 				{
 					TF2_AddCondition(client, TFCond_CritOnWin, 0.1);
 					TF2_AddCondition(client, TFCond_TeleportedGlow, 0.1);
-					float fOrigin[3], fEOrigin[3], fEndPosition[3], fDummy[3];
-	
-					GetClientEyePosition(client, fOrigin);
+
 					GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Data, "m_vecOrigin", fEOrigin);
-								
+															
 					fEOrigin[0] = fEOrigin[0] - g_fGrabbingDifference[client][0];
 					fEOrigin[1] = fEOrigin[1] - g_fGrabbingDifference[client][1];
 					fEOrigin[2] = fEOrigin[2] - g_fGrabbingDifference[client][2];
-					SetEntityGlows(fOrigin, fEOrigin, GetClientTeam(client));			
+					
+					SetEntityGlows(fOrigin, fEOrigin, client);			
 					
 					if(buttons & IN_RELOAD) //Press R
 					{
-						vel[0] = 0.0;
-						vel[1] = 0.0;
-						vel[2] = 0.0;
-						
+						for (int i = 0; i < 3; i++) vel[i] = 0.0;
+			
 						float fAngle[3], fFixAngle[3];
-						GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Send, "m_angRotation", fAngle);
-						
 						GetVectorAnglesTwoPoints(fOrigin, fEOrigin, fFixAngle);
 						AnglesNormalize(fFixAngle);
 						
 						TeleportEntity(client, NULL_VECTOR, fFixAngle, NULL_VECTOR);
 							
-						if(buttons & IN_MOVELEFT)
+						GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Send, "m_angRotation", fAngle);
+						
+						PrintCenterText(client, "%f %f", fAngle[0], fAngle[1]);
+						//Rotate
+						if(buttons & IN_DUCK)
 						{
-							fAngle[1] -= 1.0;
+							if (mouse[1] != 0 && !g_bGrabbingRotate[client]) //Up Down
+							{
+								if(mouse[1] < -1 || mouse[1] > 1)
+								{
+									if(mouse[1] < -1)		fAngle[0] += 45.0; //Up
+									else if(mouse[1] > 1)	fAngle[0] -= 45.0; //Down
+	
+									//fAngle[1]   (0 - 270) (-90 - 0)
+									AnglesNormalize(fAngle);
+									if(0.0 < fAngle[0] && fAngle[0] < 45.0)				fAngle[0] = 0.0;
+									else if(45.0 < fAngle[0] && fAngle[0] < 90.0)		fAngle[0] = 45.0;
+									else if(90.0 < fAngle[0] && fAngle[0] < 135.0)		fAngle[0] = 90.0;
+									else if(135.0 < fAngle[0] && fAngle[0] < 180.0)		fAngle[0] = 135.0;							
+									else if(180.0 < fAngle[0] && fAngle[0] < 225.0)		fAngle[0] = 180.0;
+									else if(225.0 < fAngle[0] && fAngle[0] < 270.0)		fAngle[0] = 225.0;								
+									else if(0.0 > fAngle[0] && fAngle[0] > -45.0)		fAngle[0] = -45.0;
+									else if(-45.0 > fAngle[0] && fAngle[0] > -90.0)		fAngle[0] = -90.0;			
+								}
+							}						
+							else if (mouse[0] != 0 && !g_bGrabbingRotate[client]) //Left Right
+							{
+								if(mouse[0] < -1 || mouse[0] > 1)
+								{
+									if(mouse[0] < -1)		fAngle[1] -= 45.0; //left
+									else if(mouse[0] > 1)	fAngle[1] += 45.0; //right
+	
+									//fAngle[1]   (0 - 180) (0 - -180)
+									AnglesNormalize(fAngle);
+									if(0.0 < fAngle[1] && fAngle[1] < 45.0)				fAngle[1] = 0.0;
+									else if(45.0 < fAngle[1] && fAngle[1] < 90.0)		fAngle[1] = 45.0;
+									else if(90.0 < fAngle[1] && fAngle[1] < 135.0)		fAngle[1] = 90.0;
+									else if(135.0 < fAngle[1] && fAngle[1] < 180.0)		fAngle[1] = 135.0;
+									else if(0.0 > fAngle[1] && fAngle[1] > -45.0)		fAngle[1] = -45.0;
+									else if(-45.0 > fAngle[1] && fAngle[1] > -90.0)		fAngle[1] = -90.0;
+									else if(-90.0 > fAngle[1] && fAngle[1] > -135.0)	fAngle[1] = -135.0;
+									else if(-135.0 > fAngle[1] && fAngle[1] > -180.0)	fAngle[1] = -180.0;
+								}									
+							}
 							AnglesNormalize(fAngle);
-							TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fAngle, NULL_VECTOR);
+							CreateTimer(0.3, Timer_RotateCoolDown, client);
+							g_bGrabbingRotate[client] = true;
 						}
-						else if(buttons & IN_MOVERIGHT)
+						else
 						{
-							fAngle[1] += 1.0;
-							AnglesNormalize(fAngle);
-							TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fAngle, NULL_VECTOR);
+							if (mouse[0] != 0)	fAngle[1] += mouse[0] / 2;
+							if (mouse[1] != 0)	fAngle[0] -= mouse[1] / 2;
 						}
-						else if(buttons & IN_FORWARD)
+
+						
+						if(buttons & IN_MOVELEFT && !(buttons & IN_MOVERIGHT))
 						{
-							fAngle[0] -= 1.0;
-							AnglesNormalize(fAngle);
-							TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fAngle, NULL_VECTOR);
+							if(buttons & IN_DUCK)
+							{
+								fAngle[1] -= 1.0;
+							}
+							else
+							{
+								fAngle[1] -= 2.0;
+							}
 						}
-						else if(buttons & IN_BACK)
+						else if(buttons & IN_MOVERIGHT && !(buttons & IN_MOVELEFT))	
 						{
-							fAngle[0] += 1.0;
-							AnglesNormalize(fAngle);
-							TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fAngle, NULL_VECTOR);
+							if(buttons & IN_DUCK)
+							{
+								fAngle[1] += 1.0;
+							}
+							else
+							{
+								fAngle[1] += 2.0;
+							}
 						}
+						
+						if(buttons & IN_FORWARD && !(buttons & IN_BACK))	
+						{
+							if(g_fGrabbingDistance[client] < 10000.0)
+							{
+								if(buttons & IN_DUCK)
+								{
+									g_fGrabbingDistance[client] += 1.0;
+								}
+								else
+								{
+									g_fGrabbingDistance[client] += 10.0;
+								}
+							}
+							GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
+							
+							fEndPosition[0] = fEndPosition[0] + g_fGrabbingDifference[client][0];
+							fEndPosition[1] = fEndPosition[1] + g_fGrabbingDifference[client][1];
+							fEndPosition[2] = fEndPosition[2] + g_fGrabbingDifference[client][2];
+							
+							TeleportEntity(g_iGrabbingEntity[client][0], fEndPosition, NULL_VECTOR, NULL_VECTOR);	
+						}						
+						else if(buttons & IN_BACK && !(buttons & IN_FORWARD))
+						{
+							if(g_fGrabbingDistance[client] > 150.0)
+							{
+								if(buttons & IN_DUCK)
+								{
+									g_fGrabbingDistance[client] -= 1.0;
+								}
+								else
+								{
+									g_fGrabbingDistance[client] -= 10.0;
+								}
+							}
+							GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
+							
+							fEndPosition[0] = fEndPosition[0] + g_fGrabbingDifference[client][0];
+							fEndPosition[1] = fEndPosition[1] + g_fGrabbingDifference[client][1];
+							fEndPosition[2] = fEndPosition[2] + g_fGrabbingDifference[client][2];
+							
+							TeleportEntity(g_iGrabbingEntity[client][0], fEndPosition, NULL_VECTOR, NULL_VECTOR);	
+						}							
+
+						AnglesNormalize(fAngle);
+						TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fAngle, NULL_VECTOR);
 					}
 					else 
 					{		
 						GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
-						
+					
 						fEndPosition[0] = fEndPosition[0] + g_fGrabbingDifference[client][0];
 						fEndPosition[1] = fEndPosition[1] + g_fGrabbingDifference[client][1];
-						fEndPosition[2] = fEndPosition[2] + g_fGrabbingDifference[client][2];
-						
+						fEndPosition[2] = fEndPosition[2] + g_fGrabbingDifference[client][2];						
 						MakeVectorFromPoints(fEOrigin, fEndPosition, vector); //Set velocity
-						ScaleVector(vector, 10.0);
-							
+						
 						char szClass[64];
 						GetEdictClassname(g_iGrabbingEntity[client][0], szClass, sizeof(szClass));
 						if(StrEqual(szClass, "prop_physics") && Phys_IsGravityEnabled(g_iGrabbingEntity[client][0]))
 						{
+							ScaleVector(vector, 90.0);
 							Phys_SetVelocity(EntRefToEntIndex(g_iGrabbingEntity[client][0]), vector, fZero, true);
 							Phys_Wake(g_iGrabbingEntity[client][0]);
 						}	
+						else if(IsValidClient(g_iGrabbingEntity[client][0]))
+						{
+							ScaleVector(vector, 20.0);
+							TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, NULL_VECTOR, vector);
+						}
 						else TeleportEntity(g_iGrabbingEntity[client][0], fEndPosition, NULL_VECTOR, NULL_VECTOR);
 					}		
 					
@@ -297,18 +403,29 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 								{
 									if(Phys_IsPhysicsObject(g_iGrabbingEntity[client][0]))
 									{
-										//SetHudTextParams(0.8, 0.7, 3.0, 255, 215, 0, 255, 1, 6.0, 0.5, 1.5);
 										if(Phys_IsGravityEnabled(g_iGrabbingEntity[client][0]))
-										{				
-											//ShowSyncHudText(client, g_hHud, "Prop freezed");										
+										{													
 											Phys_EnableGravity(g_iGrabbingEntity[client][0], false);
 											Phys_EnableMotion(g_iGrabbingEntity[client][0], false);
 											Phys_Sleep(g_iGrabbingEntity[client][0]);
 											PrintHintText(client, "Prop freezed");
+											/*
+											int iNewEntity = PhysicsGun_ChangeToPropDynamic(g_iGrabbingEntity[client][0]);
+											if(IsValidEntity(iNewEntity))
+											{
+												if(IsValidEntity(g_iGrabbingEntity[client][1]))	
+												{
+													AcceptEntityInput(g_iGrabbingEntity[client][1], "Kill");
+													g_iGrabbingEntity[client][1] = -1;
+												}
+												AcceptEntityInput(g_iGrabbingEntity[client][0], "Kill");
+												PrintHintText(client, "Prop freezed");
+												g_iGrabbingEntity[client][0] = iNewEntity;
+											}
+											*/
 										}
 										else 
 										{
-											//ShowSyncHudText(client, g_hHud, "Prop unfreezed");
 											Phys_EnableGravity(g_iGrabbingEntity[client][0], true);
 											Phys_EnableMotion(g_iGrabbingEntity[client][0], true);
 											Phys_Wake(g_iGrabbingEntity[client][0]);
@@ -334,12 +451,14 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 								g_bGrabbingAttack2[client] = true;
 							}
 						}
-						else if(g_bGrabbingAttack2[client])	 
-						{
-							g_bGrabbingAttack2[client] = false;
-						}
+						else if(g_bGrabbingAttack2[client])	 g_bGrabbingAttack2[client] = false;
 					}
-				}				
+				}		
+				else 
+				{
+					GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
+					SetEntityGlowsNoEntity(fOrigin, fEndPosition, client);
+				}
 			}
 			else 
 			{
@@ -362,6 +481,12 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		}
 	}
 }
+
+public Action Timer_RotateCoolDown(Handle timer, int client)
+{
+	if(g_bGrabbingRotate[client]) g_bGrabbingRotate[client] = false;
+}
+
 
 //-------[Stock]----------------------------------------------(
 stock bool IsValidClient(int client)
@@ -452,27 +577,60 @@ public void OnPluginEnd()
 	}
 }
 //---------------------------------
-void SetEntityGlows(float fOrigin[3], float fEOrigin[3], int team) //Set the Glow and laser
+void SetEntityGlows(float fOrigin[3], float fEOrigin[3], int client) //Set the Glow and laser
 {
-	float fEndPosition[3];
-	fOrigin[2] -= 10.0;
-	GetClientSightEnd(fOrigin, fEOrigin, fEndPosition);	//Glow on Grab Entity
-	if(team == 2)	TE_SetupGlowSprite(fEndPosition, g_iRedGlow, 0.1, 0.3, 100); 
-	else if(team == 3)	TE_SetupGlowSprite(fEndPosition, g_iBlueGlow, 0.1, 0.3, 100);	
+	int team = GetClientTeam(client);
+	
+	float fEndOnEntityPosition[3], fLocal_Origin[3], fLocal_EOrigin[3];
+	CopyVector(fOrigin, fLocal_Origin);
+	CopyVector(fEOrigin, fLocal_EOrigin);
+	
+	GetClientSightEnd(fLocal_Origin, fLocal_EOrigin, fEndOnEntityPosition);	//Glow on Grab Entity
+	if(team == 2)	TE_SetupGlowSprite(fEndOnEntityPosition, g_iRedGlow, 0.1, 0.3, 100); 
+	else if(team == 3)	TE_SetupGlowSprite(fEndOnEntityPosition, g_iBlueGlow, 0.1, 0.3, 100);	
 	TE_SendToAll();												
 	
+	fLocal_Origin[2] -= 10.0;
 	//TE_SetupBeamFollow(g_iGrabbingEntity[client][0], g_ModelIndex, g_HaloIndex, 0.1, 1.0, 0.1, 3, {255, 255, 255, 200});
-	
-	if(team == 2) TE_SetupBeamPoints(fOrigin, fEOrigin, g_ModelIndex2, g_HaloIndex, 0, 15, 0.15, 3.0, 3.0, 1, 0.0, {255, 100, 100, 200}, 10);	//Laser on client and Entity
-	if(team == 3) TE_SetupBeamPoints(fOrigin, fEOrigin, g_ModelIndex, g_HaloIndex, 0, 15, 0.15, 3.0, 3.0, 1, 0.0, {255, 255, 255, 200}, 10);
+	//GetWeaponPosition(client, fRightHand);
+	if(team == 2) TE_SetupBeamPoints(fLocal_Origin, fLocal_EOrigin, g_ModelIndex2, g_HaloIndex, 0, 15, 0.1, 1.0, 1.0, 1, 0.0, {255, 100, 100, 200}, 10);	//Laser on client and Entity
+	else if(team == 3) TE_SetupBeamPoints(fLocal_Origin, fLocal_EOrigin, g_ModelIndex, g_HaloIndex, 0, 15, 0.1, 1.0, 1.0, 1, 0.0, {255, 255, 255, 200}, 10);
 	TE_SendToAll();		
 	
-	fOrigin[2] -= 15.0;
-	if(team == 2)	TE_SetupGlowSprite(fOrigin, g_iRedGlow, 0.1, 0.2, 50); //Glow on Client
-	else if(team == 3)	TE_SetupGlowSprite(fOrigin, g_iBlueGlow, 0.1, 0.2, 50); //Glow on Client
-	TE_SendToAll();
-	fOrigin[2] += 25.0;
+	//fLocal_Origin[2] -= 15.0;
+	//if(team == 2)	TE_SetupGlowSprite(fLocal_Origin, g_iRedGlow, 0.1, 0.1, 50); //Glow on Client
+	//else if(team == 3)	TE_SetupGlowSprite(fLocal_Origin, g_iBlueGlow, 0.1, 0.1, 50); //Glow on Client
+	//TE_SendToAll();
 }
+
+void SetEntityGlowsNoEntity(float fOrigin[3], float fEndPosition[3], int client) //Set the Glow and laser
+{
+	int team = GetClientTeam(client);
+	
+	float fLocal_Origin[3];
+	for (int i = 0; i < 3; i++) fLocal_Origin[i] = fOrigin[i];
+
+	fLocal_Origin[2] -= 10.0;
+	if(team == 2) TE_SetupBeamPoints(fLocal_Origin, fEndPosition, g_ModelIndex2, g_HaloIndex, 0, 15, 0.1, 0.1, 0.1, 1, 0.0, {255, 100, 100, 200}, 1);	//Laser on client and Entity
+	else if(team == 3) TE_SetupBeamPoints(fLocal_Origin, fEndPosition, g_ModelIndex, g_HaloIndex, 0, 15, 0.1, 0.1, 0.1, 1, 0.0, {255, 255, 255, 200}, 1);
+	TE_SendToAll();		
+}
+
+void GetWeaponPosition(int client, float pos[3])   //TODO: GetWeaponPosition()
+{
+	/*
+   	int iWeapon = GetPlayerWeaponSlot(client, 1);
+   	if(IsValidEntity(iWeapon))
+   	{
+   		float fWeaponOrigin[3];
+   		GetEntPropVector(iWeapon, Prop_Send, "m_vecOrigin", fWeaponOrigin);
+   		PrintCenterText(client, "%f %f %f", fWeaponOrigin[0], fWeaponOrigin[1], fWeaponOrigin[2]);
+   		pos[0] = fWeaponOrigin[0];
+   		pos[1] = fWeaponOrigin[1];
+   		pos[2] = fWeaponOrigin[2];
+  	}
+  	*/
+}  
 
 int PhysicsGun_ChangeToPropPhysics(int client, int iEntity) //Change To prop_physics
 {
@@ -528,6 +686,57 @@ int PhysicsGun_ChangeToPropPhysics(int client, int iEntity) //Change To prop_phy
 				//ShowSyncHudText(client, g_hHud, "Prop unfreezed");
 				PrintHintText(client, "Prop unfreezed");
 			}
+		}
+		return iNewEntity;
+	}
+	return -1;
+}
+
+int PhysicsGun_ChangeToPropDynamic(int iEntity) //Change To prop_physics
+{
+	//Get Value-----------
+	float fOrigin[3], fAngles[3], fSize;
+	char szModel[64], szName[128];
+	int iCollision, iRed, iGreen, iBlue, iAlpha, iSkin, iOwner;
+	RenderFx EntityRenderFx;
+	
+	iOwner = Build_ReturnEntityOwner(iEntity);
+	GetEntPropString(iEntity, Prop_Data, "m_ModelName", szModel, sizeof(szModel));
+	GetEntPropVector(iEntity, Prop_Send, "m_vecOrigin", fOrigin);
+	GetEntPropVector(iEntity, Prop_Data, "m_angRotation", fAngles);
+	iCollision = GetEntProp(iEntity, Prop_Data, "m_CollisionGroup", 4);
+	fSize = GetEntPropFloat(iEntity, Prop_Send, "m_flModelScale");
+	GetEntityRenderColor(iEntity, iRed, iGreen, iBlue, iAlpha);
+	EntityRenderFx = GetEntityRenderFx(iEntity);
+		
+	iSkin = GetEntProp(iEntity, Prop_Send, "m_nSkin");
+	GetEntPropString(iEntity, Prop_Data, "m_iName", szName, sizeof(szName));
+	//--------------------
+	int iNewEntity = CreateEntityByName("prop_dynamic_override");
+	
+	if (iNewEntity > MaxClients && IsValidEntity(iNewEntity))
+	{
+		SetEntProp(iNewEntity, Prop_Send, "m_nSolidType", 6);
+		SetEntProp(iNewEntity, Prop_Data, "m_nSolidType", 6);
+		
+		Build_SetLimit(iOwner, -1);
+		if (Build_RegisterEntityOwner(iNewEntity, iOwner))
+		{
+			if (!IsModelPrecached(szModel))
+				PrecacheModel(szModel);
+			
+			DispatchKeyValue(iNewEntity, "model", szModel);
+			TeleportEntity(iNewEntity, fOrigin, fAngles, NULL_VECTOR);
+			DispatchSpawn(iNewEntity);
+			
+			SetEntProp(iNewEntity, Prop_Data, "m_CollisionGroup", iCollision);
+			SetEntPropFloat(iNewEntity, Prop_Send, "m_flModelScale", fSize);
+			if(iAlpha < 255)	SetEntityRenderMode(iNewEntity, RENDER_TRANSCOLOR);
+			else	SetEntityRenderMode(iNewEntity, RENDER_NORMAL);
+			SetEntityRenderColor(iNewEntity, iRed, iGreen, iBlue, iAlpha);
+			SetEntityRenderFx(iNewEntity, EntityRenderFx);
+			SetEntProp(iNewEntity, Prop_Send, "m_nSkin", iSkin);
+			SetEntPropString(iNewEntity, Prop_Data, "m_iName", szName);
 		}
 		return iNewEntity;
 	}
@@ -657,6 +866,13 @@ void TagsCheck(const char[] tag) //TF2Stat.sp
 		GetConVarString(hTags, tags, sizeof(tags));
 	}
 	CloseHandle(hTags);
+}
+
+void CopyVector(float In[3], float out[3])
+{
+	out[0] = In[0];
+	out[1] = In[1];
+	out[2] = In[2];
 }
 
 void GetClientSightEnd(float TE_ClientEye[3], float TE_iEye[3], float out[3])
