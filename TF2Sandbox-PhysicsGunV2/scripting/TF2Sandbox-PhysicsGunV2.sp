@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "4.0"
+#define PLUGIN_VERSION "5.0"
 
 #include <sourcemod>
 #include <sdktools>
@@ -12,6 +12,7 @@
 #include <build>
 #include <tf2_stocks>
 #include <tf2items_giveweapon>
+#include <matrixmath>
 
 #pragma newdecls required
 
@@ -24,6 +25,7 @@ public Plugin myinfo =
 	url = "http://steamcommunity.com/id/battlefieldduck/"
 };
 
+#define MODEL_PHYSICSGUNVIEWMODEL 	"models/weapons/v_superphyscannon.mdl"
 #define MODEL_PHYSICSGUN "models/weapons/w_physics.mdl"
 #define MODEL_PHYSICSLASER "materials/sprites/physbeam.vmt"
 #define MODEL_PHYSICSLASER2 "materials/sprites/laserbeam.vmt"
@@ -35,7 +37,7 @@ public Plugin myinfo =
 #define SOUND_LOOP "weapons/physcannon/hold_loop.wav"
 
 int g_iPhysicGunIndex = 66666;
-int g_iPhysicGunWeaponIndex = 129;
+int g_iPhysicGunWeaponIndex = 1001; //226; //129; //354;
 
 Handle g_cvGrabOtherProp;
 Handle g_cvPhysics;
@@ -47,12 +49,17 @@ int g_ModelIndex2;
 int g_HaloIndex;
 int g_iBlueGlow;
 int g_iRedGlow;
+int g_iPhysicsGun;
+int g_iPhysicsGunWorld;
 
 int g_iGrabbingEntity[MAXPLAYERS + 1][3]; //0. Entity, 1. Glow entity index, 2
 float g_fGrabbingDistance[MAXPLAYERS + 1]; //MaxDistance
 float g_fGrabbingDifference[MAXPLAYERS + 1][3]; //Difference
 bool g_bGrabbingAttack2[MAXPLAYERS + 1];
 bool g_bGrabbingRotate[MAXPLAYERS + 1];
+
+Handle g_hLookupBone;
+Handle g_hGetBonePosition;
 
 public void OnPluginStart()
 {
@@ -64,6 +71,24 @@ public void OnPluginStart()
 	RegAdminCmd("sm_sbpg", Command_EquipPhysicsGun, 0, "Equip PhysicsGun!");
 	RegAdminCmd("sm_p", Command_EquipPhysicsGun, 0, "Equip PhysicsGun!");
 	RegAdminCmd("sm_physicsgun", Command_EquipPhysicsGun, 0, "Equip PhysicsGun!");
+		
+	HookEvent("player_spawn", Event_PlayerSpawn);
+		
+	//https://github.com/Pelipoika/TF2_NextBot/blob/master/npc_heavyweapons.sp#L2748-L2768
+	//CBaseAnimating::LookupBone( const char *szName )
+	StartPrepSDKCall(SDKCall_Entity);
+	PrepSDKCall_SetSignature(SDKLibrary_Server, "\x55\x8B\xEC\x56\x8B\xF1\x80\xBE\x41\x03\x00\x00\x00\x75\x2A\x83\xBE\x6C\x04\x00\x00\x00\x75\x2A\xE8\x2A\x2A\x2A\x2A\x85\xC0\x74\x2A\x8B\xCE\xE8\x2A\x2A\x2A\x2A\x8B\x86\x6C\x04\x00\x00\x85\xC0\x74\x2A\x83\x38\x00\x74\x2A\xFF\x75\x08\x50\xE8\x2A\x2A\x2A\x2A\x83\xC4\x08\x5E", 68);
+	PrepSDKCall_AddParameter(SDKType_String, SDKPass_Pointer);
+	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);
+	if ((g_hLookupBone = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CBaseAnimating::LookupBone signature!");
+	
+	//void CBaseAnimating::GetBonePosition ( int iBone, Vector &origin, QAngle &angles )
+	StartPrepSDKCall(SDKCall_Entity);
+	PrepSDKCall_SetSignature(SDKLibrary_Server, "\x55\x8B\xEC\x83\xEC\x30\x56\x8B\xF1\x80\xBE\x41\x03\x00\x00\x00", 16);
+	PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain);
+	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef, _, VENCODE_FLAG_COPYBACK);
+	PrepSDKCall_AddParameter(SDKType_QAngle, SDKPass_ByRef, _, VENCODE_FLAG_COPYBACK);
+	if ((g_hGetBonePosition = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CBaseAnimating::GetBonePosition signature!");
 	
 	g_hHud = CreateHudSynchronizer();
 }
@@ -100,6 +125,8 @@ public void OnMapStart() //Precache Sound and Model
 	g_iBlueGlow = PrecacheModel(MODEL_BLUEGLOW);
 	g_iRedGlow = PrecacheModel(MODEL_REDGLOW);
 	g_ModelIndex2 = PrecacheModel(MODEL_PHYSICSLASER2);
+	g_iPhysicsGun = PrecacheModel(MODEL_PHYSICSGUNVIEWMODEL);
+	g_iPhysicsGunWorld = PrecacheModel(MODEL_PHYSICSGUN);
 	PrecacheSound(SOUND_PICKUP);
 	PrecacheSound(SOUND_DROP);
 	PrecacheSound(SOUND_LOOP);
@@ -111,8 +138,44 @@ public void OnMapStart() //Precache Sound and Model
 	{
 		g_iGrabbingEntity[i][0] = -1; //Grab entity
 		g_iGrabbingEntity[i][1] = -1; //tf_glow
+		if(IsValidClient(i))	
+		{
+			SDKHook(i, SDKHook_PreThink, PreThinkHook);
+			SDKHook(i, SDKHook_WeaponSwitchPost, WeaponSwitchHookPost);
+		}	
 	}
 }
+
+public Action WeaponSwitchHookPost(int client, int entity) 
+{
+	if(IsValidClient(client) && IsPlayerAlive(client))
+	{
+		int iViewModel = GetEntPropEnt(client, Prop_Send, "m_hViewModel");
+		if(IsHoldingPhysicsGun(client))
+		{
+			SetEntProp(iViewModel, Prop_Send, "m_nModelIndex", g_iPhysicsGun, 2);
+			SetEntProp(iViewModel, Prop_Send, "m_nSequence", 2);
+		}
+		else
+		{
+			char sArmModel[128];
+			switch (TF2_GetPlayerClass(client))
+			{
+				case TFClass_Scout: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_scout_arms.mdl");
+				case TFClass_Soldier: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_soldier_arms.mdl");
+				case TFClass_Pyro: 		Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_pyro_arms.mdl");
+				case TFClass_DemoMan: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_demo_arms.mdl");
+				case TFClass_Heavy:		Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_heavy_arms.mdl");
+				case TFClass_Engineer: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_engineer_arms.mdl");
+				case TFClass_Medic: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_medic_arms.mdl");
+				case TFClass_Sniper: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_sniper_arms.mdl");
+				case TFClass_Spy: 		Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_spy_arms.mdl");
+			}
+			if(strlen(sArmModel) > 0)	SetEntProp(iViewModel, Prop_Send, "m_nModelIndex", PrecacheModel(sArmModel, true), 2);
+		}
+	}	
+}
+
 
 public Action Timer_CreateWeapon(Handle timer, int client)
 {
@@ -134,6 +197,8 @@ public void OnClientPutInServer(int client)
 	g_iGrabbingEntity[client][2] = -1;
 	g_fGrabbingDistance[client] = 0.0;
 	g_bGrabbingRotate[client] = false;
+	SDKHook(client, SDKHook_PreThink, PreThinkHook);
+	SDKHook(client, SDKHook_WeaponSwitchPost, WeaponSwitchHookPost);
 }
 
 public void OnClientDisconnect(int client)
@@ -144,18 +209,77 @@ public void OnClientDisconnect(int client)
 	g_iGrabbingEntity[client][2] = -1;
 	g_fGrabbingDistance[client] = 0.0;
 	g_bGrabbingRotate[client] = false;
+	SDKUnhook(client, SDKHook_WeaponCanSwitchTo, WeaponSwitchHook);
+	SDKUnhook(client, SDKHook_WeaponSwitchPost, WeaponSwitchHookPost);
+	SDKUnhook(client, SDKHook_PreThink, PreThinkHook);
+}
+
+public void OnEntityCreated(int entity, const char[] classname)
+{
+	if (StrEqual(classname, "tf_dropped_weapon"))
+	{
+		SDKHook(entity, SDKHook_SpawnPost, OnDroppedWeaponSpawn);
+	}
+}
+
+public void OnDroppedWeaponSpawn(int entity)
+{  
+	if(IsValidEntity(entity))
+	{
+		if(GetEntProp(entity, Prop_Send, "m_iItemDefinitionIndex") == g_iPhysicGunWeaponIndex && GetEntProp(entity, Prop_Send, "m_iEntityQuality") == 9)
+		{
+			AcceptEntityInput(entity, "Kill");
+		}
+	} 
+} 
+
+public void Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	
+	if(IsValidClient(client))
+	{
+		SDKUnhook(client, SDKHook_WeaponCanSwitchTo, WeaponSwitchHook);
+	}
 }
 //-------------------------------------------------)
 
+public Action WeaponSwitchHook(int client, int entity)
+{
+	return Plugin_Handled;	
+}
+	
+public Action PreThinkHook(int client)
+{
+	if(IsValidEntity(g_iGrabbingEntity[client][0]))
+	{
+		/*
+		float fAimPosition[3], fEOrigin[3];
+		GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Data, "m_vecOrigin", fEOrigin);
+						
+		fAimPosition[0] = fEOrigin[0] - g_fGrabbingDifference[client][0];
+		fAimPosition[1] = fEOrigin[1] - g_fGrabbingDifference[client][1];
+		fAimPosition[2] = fEOrigin[2] - g_fGrabbingDifference[client][2];
+		
+		SetEntityGlows(client, fAimPosition);
+		*/
+	}
+	return Plugin_Continue;
+}
+
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	if (!IsValidClient(client))
+	if (!IsValidClient(client)) //Return gay client
 		return;
 		
 	if(IsPlayerAlive(client))
 	{
-		int iEntity = Build_ClientAimEntity(client, false, true);
-		if(IsPropBuggedDoor(iEntity))
+		//Get Value
+		int iEntity = Build_ClientAimEntity(client, false, true); //GetAimEntity
+		int iWeapon = GetPlayerWeaponSlot(client, 1);
+		int iActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+		
+		if(IsPropBuggedDoor(iEntity)) //Show info of Bugged Door
 		{
 			char szName[64];
 			SetHudTextParams(-1.0, 0.6, 3.0, 255, 0, 0, 230, 1, 6.0, 1.0, 2.0);
@@ -164,95 +288,95 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			if(IsValidClient(iEntityOwner)) ShowSyncHudText(client, g_hHud, "%s\n built by %N", szName, iEntityOwner);
 			else ShowSyncHudText(client, g_hHud, "%s\n built by *World", szName);
 		}
-			
-		int iWeapon = GetPlayerWeaponSlot(client, 1);
-		int iActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
-
+	
 		if(IsValidEntity(iWeapon) && iWeapon == iActiveWeapon && GetEntProp(iActiveWeapon, Prop_Send, "m_iItemDefinitionIndex") == g_iPhysicGunWeaponIndex && GetEntProp(iActiveWeapon, Prop_Send, "m_iEntityQuality") == 9)
-		{
-			float vector[3], fZero[3];
-			if(buttons & IN_ATTACK)//When In_Attack
+		{	//Check Is it Physics Gun V2
+			if(buttons & IN_ATTACK)	//When In_Attack
 			{
-				//int iEntity = Build_ClientAimEntity(client, false, true);
-				if(IsValidEntity(iEntity) && (Build_ReturnEntityOwner(iEntity) == client || ((GetConVarInt(g_cvGrabOtherProp) == 1 && CheckCommandAccess(client, "sm_admin", ADMFLAG_GENERIC)) || GetConVarInt(g_cvGrabOtherProp) == 2)) && !IsValidEntity(g_iGrabbingEntity[client][0])) //g_iGrabbingEntity[client][0] to iEntity when 
+				if(IsValidEntity(iEntity) && !IsValidEntity(g_iGrabbingEntity[client][0]))
 				{
-					g_iGrabbingEntity[client][0] = iEntity; //Bind Entity
-					if(!TF2_HasGlow(g_iGrabbingEntity[client][0]) && !IsValidEntity(g_iGrabbingEntity[client][1])) g_iGrabbingEntity[client][1] = TF2_CreateGlow(iEntity, GetClientTeam(client));
-					g_fGrabbingDistance[client] = GetEntitiesDistance(client, g_iGrabbingEntity[client][0]);
-					
-					float fEOrigin[3], fEndPosition[3], fDummy[3];
-					GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Data, "m_vecOrigin", fEOrigin);
-					GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
-					
-					g_fGrabbingDifference[client][0] = fEOrigin[0] - fEndPosition[0];
-					g_fGrabbingDifference[client][1] = fEOrigin[1] - fEndPosition[1];
-					g_fGrabbingDifference[client][2] = fEOrigin[2] - fEndPosition[2];
-					
-					if(GetConVarBool(g_cvPhysics)) g_bGrabbingAttack2[client] = false;
-					g_bGrabbingRotate[client] = false;
-					
-					EmitSoundToAll(SOUND_PICKUP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
-					EmitSoundToAll(SOUND_LOOP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.5);
-				}
-				else if((GetConVarInt(g_cvGrabPlayer) == 2 || (GetConVarInt(g_cvGrabPlayer) == 1 && CheckCommandAccess(client, "sm_admin", ADMFLAG_GENERIC))) && IsValidEntity(iEntity) && IsValidClient(iEntity) && !IsValidEntity(g_iGrabbingEntity[client][0]))
-				{
-					g_iGrabbingEntity[client][0] = iEntity; //Bind Entity
-					if(!TF2_HasGlow(g_iGrabbingEntity[client][0]) && !IsValidEntity(g_iGrabbingEntity[client][1])) g_iGrabbingEntity[client][1] = TF2_CreateGlow(iEntity, GetClientTeam(client));
-					g_fGrabbingDistance[client] = GetEntitiesDistance(client, g_iGrabbingEntity[client][0]);
-					
-					float fEOrigin[3], fEndPosition[3], fDummy[3];
-					GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Data, "m_vecOrigin", fEOrigin);
-					GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
-					
-					g_fGrabbingDifference[client][0] = fEOrigin[0] - fEndPosition[0];
-					g_fGrabbingDifference[client][1] = fEOrigin[1] - fEndPosition[1];
-					g_fGrabbingDifference[client][2] = fEOrigin[2] - fEndPosition[2];
-					
-					if(GetConVarBool(g_cvPhysics)) g_bGrabbingAttack2[client] = false;
-					g_bGrabbingRotate[client] = false;
-					
-					EmitSoundToAll(SOUND_PICKUP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
-					EmitSoundToAll(SOUND_LOOP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.5);
+					if((Build_ReturnEntityOwner(iEntity) == client || ((GetConVarInt(g_cvGrabOtherProp) == 1 && CheckCommandAccess(client, "sm_admin", ADMFLAG_GENERIC)) || GetConVarInt(g_cvGrabOtherProp) == 2)) 
+					|| ((GetConVarInt(g_cvGrabPlayer) == 2 || (GetConVarInt(g_cvGrabPlayer) == 1 && CheckCommandAccess(client, "sm_admin", ADMFLAG_GENERIC))) && IsValidClient(iEntity)))
+					{
+						SDKHook(client, SDKHook_WeaponCanSwitchTo, WeaponSwitchHook);
+						
+						g_iGrabbingEntity[client][0] = iEntity; //Bind Entity
+						
+						if(!TF2_HasGlow(g_iGrabbingEntity[client][0]) && !IsValidEntity(g_iGrabbingEntity[client][1])) //Set Glow
+							g_iGrabbingEntity[client][1] = TF2_CreateGlow(iEntity, GetClientTeam(client));
+							
+						g_fGrabbingDistance[client] = GetEntitiesDistance(client, g_iGrabbingEntity[client][0]); //Save the Entity Distance
+						
+						float fEOrigin[3], fEndPosition[3], fNormal[3];
+						GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Data, "m_vecOrigin", fEOrigin);
+						GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fNormal, tracerayfilterrocket, client);
+						
+						g_fGrabbingDifference[client][0] = fEOrigin[0] - fEndPosition[0];
+						g_fGrabbingDifference[client][1] = fEOrigin[1] - fEndPosition[1];
+						g_fGrabbingDifference[client][2] = fEOrigin[2] - fEndPosition[2];
+						
+						if(GetConVarBool(g_cvPhysics)) g_bGrabbingAttack2[client] = false;
+						g_bGrabbingRotate[client] = false;
+						
+						EmitSoundToAll(SOUND_PICKUP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
+						//EmitSoundToAll(SOUND_LOOP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.5); //Buggy
+					}
 				}
 				
-				float fOrigin[3], fEOrigin[3], fEndPosition[3], fDummy[3];
-				GetClientEyePosition(client, fOrigin);
-				
+				float vector[3], fZero[3];
 				if (IsValidEntity(g_iGrabbingEntity[client][0]))
 				{
-					TF2_AddCondition(client, TFCond_CritOnWin, 0.1);
-					TF2_AddCondition(client, TFCond_TeleportedGlow, 0.1);
+					//GetValue
+					float fOrigin[3], fClientAngle[3], fEOrigin[3], fEndPosition[3], fDummy[3];
+					GetClientEyePosition(client, fOrigin);
+					GetClientEyeAngles(client, fClientAngle);
+		
+					if(!TF2_IsPlayerInCondition(client, TFCond_CritOnWin)) 		TF2_AddCondition(client, TFCond_CritOnWin, 0.1);			
+					if(!TF2_IsPlayerInCondition(client, TFCond_TeleportedGlow)) TF2_AddCondition(client, TFCond_TeleportedGlow, 0.1);
 
 					GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Data, "m_vecOrigin", fEOrigin);
-															
-					fEOrigin[0] = fEOrigin[0] - g_fGrabbingDifference[client][0];
-					fEOrigin[1] = fEOrigin[1] - g_fGrabbingDifference[client][1];
-					fEOrigin[2] = fEOrigin[2] - g_fGrabbingDifference[client][2];
+						
+					float fAimPosition[3];
+					fAimPosition[0] = fEOrigin[0] - g_fGrabbingDifference[client][0];
+					fAimPosition[1] = fEOrigin[1] - g_fGrabbingDifference[client][1];
+					fAimPosition[2] = fEOrigin[2] - g_fGrabbingDifference[client][2];
 					
-					SetEntityGlows(fOrigin, fEOrigin, client);			
+					SetEntityGlows(client, fAimPosition);			
 					
-					if(buttons & IN_RELOAD) //Press R
+					if(buttons & IN_RELOAD && !(buttons & IN_ATTACK3)) //Press R
 					{
 						for (int i = 0; i < 3; i++) vel[i] = 0.0;
 			
-						float fAngle[3], fFixAngle[3];
-						GetVectorAnglesTwoPoints(fOrigin, fEOrigin, fFixAngle);
+						float fOriginAngle[3], fAngle[3], fFixAngle[3];
+						GetVectorAnglesTwoPoints(fOrigin, fAimPosition, fFixAngle);
 						AnglesNormalize(fFixAngle);
 						
 						TeleportEntity(client, NULL_VECTOR, fFixAngle, NULL_VECTOR);
 							
 						GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Send, "m_angRotation", fAngle);
-						
-						PrintCenterText(client, "%f %f", fAngle[0], fAngle[1]);
+						CopyVector(fAngle, fOriginAngle);
+						/*					
+						int matrix[matrix3x4_t];
+						matrix3x4FromAngles(fClientAngle, g_fGrabbingDifference[client], matrix);	
+						float fLocalAngle[3], fOrginalAngle[3], fWorldAngle[3];					
+						TransformAnglesToLocalSpace(fAngle, fLocalAngle, matrix);	
+						*/
+
 						//Rotate
 						if(buttons & IN_DUCK)
 						{
-							if (mouse[1] != 0 && !g_bGrabbingRotate[client]) //Up Down
+							if (mouse[1] != 0 && !g_bGrabbingRotate[client]) 
 							{
 								if(mouse[1] < -1 || mouse[1] > 1)
 								{
-									if(mouse[1] < -1)		fAngle[0] += 45.0; //Up
-									else if(mouse[1] > 1)	fAngle[0] -= 45.0; //Down
+									if(mouse[1] < -1)		
+									{
+										fAngle[0] += 45.0; //Up
+									}
+									else if(mouse[1] > 1)
+									{									
+										fAngle[0] -= 45.0; //Down
+									}
 	
 									//fAngle[1]   (0 - 270) (-90 - 0)
 									AnglesNormalize(fAngle);
@@ -291,8 +415,14 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 						}
 						else
 						{
-							if (mouse[0] != 0)	fAngle[1] += mouse[0] / 2;
-							if (mouse[1] != 0)	fAngle[0] -= mouse[1] / 2;
+							if (mouse[0] != 0)	
+							{
+								fAngle[1] += mouse[0] / 2; //Left Right
+							}
+							if (mouse[1] != 0)
+							{
+								fAngle[0] += mouse[1] / 2; //Up Down
+							}					
 						}
 
 						
@@ -300,7 +430,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 						{
 							if(buttons & IN_DUCK)
 							{
-								fAngle[1] -= 1.0;
+								fAngle[1] -= 1.0;								
 							}
 							else
 							{
@@ -323,47 +453,26 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 						{
 							if(g_fGrabbingDistance[client] < 10000.0)
 							{
-								if(buttons & IN_DUCK)
-								{
-									g_fGrabbingDistance[client] += 1.0;
-								}
-								else
-								{
-									g_fGrabbingDistance[client] += 10.0;
-								}
+								g_fGrabbingDistance[client] += 10.0;
 							}
-							GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
-							
-							fEndPosition[0] = fEndPosition[0] + g_fGrabbingDifference[client][0];
-							fEndPosition[1] = fEndPosition[1] + g_fGrabbingDifference[client][1];
-							fEndPosition[2] = fEndPosition[2] + g_fGrabbingDifference[client][2];
-							
-							TeleportEntity(g_iGrabbingEntity[client][0], fEndPosition, NULL_VECTOR, NULL_VECTOR);	
 						}						
 						else if(buttons & IN_BACK && !(buttons & IN_FORWARD))
 						{
 							if(g_fGrabbingDistance[client] > 150.0)
 							{
-								if(buttons & IN_DUCK)
-								{
-									g_fGrabbingDistance[client] -= 1.0;
-								}
-								else
-								{
-									g_fGrabbingDistance[client] -= 10.0;
-								}
+								g_fGrabbingDistance[client] -= 10.0;
 							}
-							GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
-							
-							fEndPosition[0] = fEndPosition[0] + g_fGrabbingDifference[client][0];
-							fEndPosition[1] = fEndPosition[1] + g_fGrabbingDifference[client][1];
-							fEndPosition[2] = fEndPosition[2] + g_fGrabbingDifference[client][2];
-							
-							TeleportEntity(g_iGrabbingEntity[client][0], fEndPosition, NULL_VECTOR, NULL_VECTOR);	
-						}							
+						}		
+						
+						GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
 
+						float fNewEntityPosition[3];					
+						fNewEntityPosition[0] = fEndPosition[0] + g_fGrabbingDifference[client][0];
+						fNewEntityPosition[1] = fEndPosition[1] + g_fGrabbingDifference[client][1];
+						fNewEntityPosition[2] = fEndPosition[2] + g_fGrabbingDifference[client][2];
+	
 						AnglesNormalize(fAngle);
-						TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fAngle, NULL_VECTOR);
+						TeleportEntity(g_iGrabbingEntity[client][0], fNewEntityPosition, fAngle, NULL_VECTOR); //fNewEntityPosition
 					}
 					else 
 					{		
@@ -372,13 +481,13 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 						fEndPosition[0] = fEndPosition[0] + g_fGrabbingDifference[client][0];
 						fEndPosition[1] = fEndPosition[1] + g_fGrabbingDifference[client][1];
 						fEndPosition[2] = fEndPosition[2] + g_fGrabbingDifference[client][2];						
-						MakeVectorFromPoints(fEOrigin, fEndPosition, vector); //Set velocity
+						MakeVectorFromPoints(fAimPosition, fEndPosition, vector); //Set velocity
 						
 						char szClass[64];
 						GetEdictClassname(g_iGrabbingEntity[client][0], szClass, sizeof(szClass));
 						if(StrEqual(szClass, "prop_physics") && Phys_IsGravityEnabled(g_iGrabbingEntity[client][0]))
 						{
-							ScaleVector(vector, 90.0);
+							ScaleVector(vector, 70.0);
 							Phys_SetVelocity(EntRefToEntIndex(g_iGrabbingEntity[client][0]), vector, fZero, true);
 							Phys_Wake(g_iGrabbingEntity[client][0]);
 						}	
@@ -389,6 +498,17 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 						}
 						else TeleportEntity(g_iGrabbingEntity[client][0], fEndPosition, NULL_VECTOR, NULL_VECTOR);
 					}		
+					
+					if(buttons & IN_ATTACK3)
+					{
+						TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fClientAngle, NULL_VECTOR);				
+						//int matrix[matrix3x4_t];
+						//matrix3x4FromAngles(fClientAngle, g_fGrabbingDifference[client], matrix);
+						//float fLocalAngle[3], fWorldAngle[3];			
+						//TransformAnglesToLocalSpace(fClientAngle, fLocalAngle, matrix);	
+						//TransformAnglesToWorldSpace(fLocalAngle, fWorldAngle, matrix);
+						//TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fWorldAngle, NULL_VECTOR);
+					}
 					
 					if(GetConVarBool(g_cvPhysics) && CheckCommandAccess(client, "sm_admin", ADMFLAG_GENERIC) && !IsPropBuggedDoor(g_iGrabbingEntity[client][0])) //Enable Physics function, Optional reason: FPS drop
 					{
@@ -456,20 +576,19 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				}		
 				else 
 				{
-					GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fDummy, tracerayfilterrocket, client);
-					SetEntityGlowsNoEntity(fOrigin, fEndPosition, client);
+					float fEndPosition[3], fNormal[3];
+					GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, fNormal, tracerayfilterrocket, client);
+					SetEntityGlowsNoEntity(client, fEndPosition);
 				}
 			}
 			else 
 			{
 				if(IsValidEntity(g_iGrabbingEntity[client][0]))	
 				{
-					if(IsPropBuggedDoor(g_iGrabbingEntity[client][0])) //Respawn the bugged door
-					{
-						PhysicsGun_RespawnProp(g_iGrabbingEntity[client][0]); //Respawn (Copy) the door
-					}
-					StopSound(client, SNDCHAN_AUTO, SOUND_LOOP);
+					if(IsPropBuggedDoor(g_iGrabbingEntity[client][0]))	PhysicsGun_RespawnProp(g_iGrabbingEntity[client][0]); //Respawn (Copy) the door
+					//StopSound(client, SNDCHAN_AUTO, SOUND_LOOP); //Buggy
 					EmitSoundToAll(SOUND_DROP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
+					SDKUnhook(client, SDKHook_WeaponCanSwitchTo, WeaponSwitchHook);
 					g_iGrabbingEntity[client][0] = -1; //Set grab entity to NULL
 				} 
 				ResetClientAttribute(client);
@@ -488,7 +607,7 @@ public Action Timer_RotateCoolDown(Handle timer, int client)
 }
 
 
-//-------[Stock]----------------------------------------------(
+//-------[Stock]----------------------------------------------------------------------------------------------------(
 stock bool IsValidClient(int client)
 {
 	if (client <= 0)return false;
@@ -577,60 +696,51 @@ public void OnPluginEnd()
 	}
 }
 //---------------------------------
-void SetEntityGlows(float fOrigin[3], float fEOrigin[3], int client) //Set the Glow and laser
+void SetEntityGlows(int client, float fEOrigin[3]) //Set the Glow and laser
 {
 	int team = GetClientTeam(client);
 	
-	float fEndOnEntityPosition[3], fLocal_Origin[3], fLocal_EOrigin[3];
-	CopyVector(fOrigin, fLocal_Origin);
+	float fEndOnEntityPosition[3], fLocal_Origin[3], fLocal_EOrigin[3], fLocal_Angle[3];
 	CopyVector(fEOrigin, fLocal_EOrigin);
 	
-	GetClientSightEnd(fLocal_Origin, fLocal_EOrigin, fEndOnEntityPosition);	//Glow on Grab Entity
-	if(team == 2)	TE_SetupGlowSprite(fEndOnEntityPosition, g_iRedGlow, 0.1, 0.3, 100); 
-	else if(team == 3)	TE_SetupGlowSprite(fEndOnEntityPosition, g_iBlueGlow, 0.1, 0.3, 100);	
-	TE_SendToAll();												
+	int iBone = SDKCall(g_hLookupBone, client, "weapon_bone"); //weapon_bone
+	if(iBone != -1)
+	{
+		SDKCall(g_hGetBonePosition, client, iBone, fLocal_Origin, fLocal_Angle);
+		fLocal_Origin[2] += 19.5;
 	
-	fLocal_Origin[2] -= 10.0;
-	//TE_SetupBeamFollow(g_iGrabbingEntity[client][0], g_ModelIndex, g_HaloIndex, 0.1, 1.0, 0.1, 3, {255, 255, 255, 200});
-	//GetWeaponPosition(client, fRightHand);
-	if(team == 2) TE_SetupBeamPoints(fLocal_Origin, fLocal_EOrigin, g_ModelIndex2, g_HaloIndex, 0, 15, 0.1, 1.0, 1.0, 1, 0.0, {255, 100, 100, 200}, 10);	//Laser on client and Entity
-	else if(team == 3) TE_SetupBeamPoints(fLocal_Origin, fLocal_EOrigin, g_ModelIndex, g_HaloIndex, 0, 15, 0.1, 1.0, 1.0, 1, 0.0, {255, 255, 255, 200}, 10);
-	TE_SendToAll();		
+		GetClientSightEnd(fLocal_Origin, fLocal_EOrigin, fEndOnEntityPosition);	//Glow on Grab Entity
+		if(team == 2)	TE_SetupGlowSprite(fEndOnEntityPosition, g_iRedGlow, 0.1, 0.3, 100); 
+		else if(team == 3)	TE_SetupGlowSprite(fEndOnEntityPosition, g_iBlueGlow, 0.1, 0.3, 100);	
+		TE_SendToAll();												
 	
-	//fLocal_Origin[2] -= 15.0;
-	//if(team == 2)	TE_SetupGlowSprite(fLocal_Origin, g_iRedGlow, 0.1, 0.1, 50); //Glow on Client
-	//else if(team == 3)	TE_SetupGlowSprite(fLocal_Origin, g_iBlueGlow, 0.1, 0.1, 50); //Glow on Client
-	//TE_SendToAll();
+		if(team == 2) TE_SetupBeamPoints(fLocal_Origin, fLocal_EOrigin, g_ModelIndex2, g_HaloIndex, 0, 15, 0.1, 1.0, 1.0, 1, 0.0, {255, 100, 100, 200}, 10);	//Laser on client and Entity
+		else if(team == 3) TE_SetupBeamPoints(fLocal_Origin, fLocal_EOrigin, g_ModelIndex, g_HaloIndex, 0, 15, 0.1, 1.0, 1.0, 1, 0.0, {255, 255, 255, 200}, 10);
+		TE_SendToAll();	
+		
+		if(team == 2)	TE_SetupGlowSprite(fLocal_Origin, g_iRedGlow, 0.1, 0.3, 20); //Glow on Client
+		else if(team == 3)	TE_SetupGlowSprite(fLocal_Origin, g_iBlueGlow, 0.1, 0.3, 20);
+		TE_SendToAll();
+	}		
 }
 
-void SetEntityGlowsNoEntity(float fOrigin[3], float fEndPosition[3], int client) //Set the Glow and laser
+void SetEntityGlowsNoEntity(int client, float fEndPosition[3]) //Set the Glow and laser when no entity
 {
 	int team = GetClientTeam(client);
 	
-	float fLocal_Origin[3];
-	for (int i = 0; i < 3; i++) fLocal_Origin[i] = fOrigin[i];
-
-	fLocal_Origin[2] -= 10.0;
-	if(team == 2) TE_SetupBeamPoints(fLocal_Origin, fEndPosition, g_ModelIndex2, g_HaloIndex, 0, 15, 0.1, 0.1, 0.1, 1, 0.0, {255, 100, 100, 200}, 1);	//Laser on client and Entity
-	else if(team == 3) TE_SetupBeamPoints(fLocal_Origin, fEndPosition, g_ModelIndex, g_HaloIndex, 0, 15, 0.1, 0.1, 0.1, 1, 0.0, {255, 255, 255, 200}, 1);
-	TE_SendToAll();		
+	float fLocal_Origin[3], fLocal_Angle[3];
+	
+	int iBone = SDKCall(g_hLookupBone, client, "weapon_bone"); //weapon_bone
+	if(iBone != -1)
+	{
+		SDKCall(g_hGetBonePosition, client, iBone, fLocal_Origin, fLocal_Angle);
+		fLocal_Origin[2] += 19.5;
+		//PrintToChatAll("%N bone %i origin %f %f %f angles %f %f %f", client, iBone, iorigin[0], iorigin[1], iorigin[2], iangles[0], iangles[1], iangles[2]);
+		if(team == 2) TE_SetupBeamPoints(fLocal_Origin, fEndPosition, g_ModelIndex2, g_HaloIndex, 0, 15, 0.1, 0.11, 0.1, 1, 0.0, {255, 100, 100, 200}, 1);	//Laser on client and Entity
+		else if(team == 3) TE_SetupBeamPoints(fLocal_Origin, fEndPosition, g_ModelIndex, g_HaloIndex, 0, 15, 0.1, 0.11, 0.1, 1, 0.0, {255, 255, 255, 200}, 1);
+		TE_SendToAll();		
+	}
 }
-
-void GetWeaponPosition(int client, float pos[3])   //TODO: GetWeaponPosition()
-{
-	/*
-   	int iWeapon = GetPlayerWeaponSlot(client, 1);
-   	if(IsValidEntity(iWeapon))
-   	{
-   		float fWeaponOrigin[3];
-   		GetEntPropVector(iWeapon, Prop_Send, "m_vecOrigin", fWeaponOrigin);
-   		PrintCenterText(client, "%f %f %f", fWeaponOrigin[0], fWeaponOrigin[1], fWeaponOrigin[2]);
-   		pos[0] = fWeaponOrigin[0];
-   		pos[1] = fWeaponOrigin[1];
-   		pos[2] = fWeaponOrigin[2];
-  	}
-  	*/
-}  
 
 int PhysicsGun_ChangeToPropPhysics(int client, int iEntity) //Change To prop_physics
 {
@@ -682,8 +792,6 @@ int PhysicsGun_ChangeToPropPhysics(int client, int iEntity) //Change To prop_phy
 			{
 				Phys_EnableGravity(iNewEntity, true);
 				Phys_EnableMotion(iNewEntity, true);
-				//SetHudTextParams(0.8, 0.7, 3.0, 255, 215, 0, 255, 1, 6.0, 0.5, 1.5);
-				//ShowSyncHudText(client, g_hHud, "Prop unfreezed");
 				PrintHintText(client, "Prop unfreezed");
 			}
 		}
@@ -752,7 +860,7 @@ bool IsPropBuggedDoor(int iEntity) //For reload bug door
 		if(StrEqual(szModel, "models/combine_gate_citizen.mdl") 
 		||	StrEqual(szModel, "models/combine_gate_Vehicle.mdl") 
 		||	StrEqual(szModel, "models/props_doors/doorKLab01.mdl") 
-		|| StrEqual(szModel, "models/props_lab/elevatordoor.mdl") 
+		|| 	StrEqual(szModel, "models/props_lab/elevatordoor.mdl") 
 		||  StrEqual(szModel, "models/props_lab/RavenDoor.mdl"))	
 			return true;
 	}
@@ -836,6 +944,7 @@ void ResetClientAttribute(int client)
 	}
 	if(IsValidEntity(g_iGrabbingEntity[client][0]))	
 	{
+		SDKUnhook(client, SDKHook_WeaponCanSwitchTo, WeaponSwitchHook);
 		g_iGrabbingEntity[client][0] = -1;
 	}
 	g_iGrabbingEntity[client][2] = -1;
@@ -868,11 +977,34 @@ void TagsCheck(const char[] tag) //TF2Stat.sp
 	CloseHandle(hTags);
 }
 
-void CopyVector(float In[3], float out[3])
+void PhysicsGun_RotationCalculation_NewGrabbingDifference(float fGrabbingDifference[3], float fDifferenceAngle[3], float outfNewDifferece[3])
 {
-	out[0] = In[0];
-	out[1] = In[1];
-	out[2] = In[2];
+	float A1, A2, A3, B1, B2, B3, C1, C2, C3;
+	float AngleX, AngleY, AngleZ, DifferenceX, DifferenceY, DifferenceZ;
+	
+	DifferenceX = fGrabbingDifference[0];
+	DifferenceY = fGrabbingDifference[1];
+	DifferenceZ = fGrabbingDifference[2];
+	
+	AngleX = fDifferenceAngle[0];
+	AngleY = fDifferenceAngle[1];
+	AngleZ = fDifferenceAngle[2];
+	
+	A1 = DifferenceX * Cosine(AngleZ) - DifferenceY * Sine(AngleZ);
+	B1 = DifferenceX * Sine(AngleZ) + DifferenceY * Cosine(AngleZ);
+	C1 = DifferenceZ;
+	
+	B2 = B1 * Cosine(AngleY) - C1 * Sine(AngleY);
+	C2 = B1 * Sine(AngleY) + C1 * Cosine(AngleY);
+	A2 = A1;
+	
+	C3 = C2 * Cosine(AngleX) - A2 * Sine(AngleX);
+	A3 = C2 * Sine(AngleX) + A2 * Cosine(AngleX);
+	B3 = B2;
+	
+	outfNewDifferece[0] = A3;
+	outfNewDifferece[1] = B3;
+	outfNewDifferece[2] = C3;
 }
 
 void GetClientSightEnd(float TE_ClientEye[3], float TE_iEye[3], float out[3])
@@ -972,3 +1104,15 @@ void SendDialogToOne(int client, int red, int green, int blue, const char[] text
 
 	delete kv;
 }
+
+bool IsHoldingPhysicsGun(int client)
+{ 
+	int iWeapon = GetPlayerWeaponSlot(client, 1);
+	int iActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+		
+	if(IsValidEntity(iWeapon) && iWeapon == iActiveWeapon && GetEntProp(iActiveWeapon, Prop_Send, "m_iItemDefinitionIndex") == g_iPhysicGunWeaponIndex && GetEntProp(iActiveWeapon, Prop_Send, "m_iEntityQuality") == 9)
+	{	//Check Is it Physics Gun
+		return true;
+	}
+	return false;
+} //@
