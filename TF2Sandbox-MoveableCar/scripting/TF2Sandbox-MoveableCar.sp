@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "2.5"
+#define PLUGIN_VERSION "3.0"
 
 #include <sourcemod>
 #include <sdktools>
@@ -39,7 +39,7 @@ public void OnPluginStart()
 	RegAdminCmd("sm_sbcar", Command_SandboxCar, 0);
 	
 	CreateConVar("sm_tf2sb_car_version", PLUGIN_VERSION, "", FCVAR_SPONLY | FCVAR_NOTIFY);
-	g_iSpeedlimit = CreateConVar("sm_tf2sb_car_speedlimit", "450", "Speed limit of car (100 - 1000)", 0, true, 100.0, true, 1000.0);
+	g_iSpeedlimit = CreateConVar("sm_tf2sb_car_speedlimit", "500", "Speed limit of car (100 - 1000)", 0, true, 100.0, true, 1000.0);
 	g_hHud = CreateHudSynchronizer();
 	g_hHud2 = CreateHudSynchronizer();
 }
@@ -181,6 +181,9 @@ public Action Command_SelectCar(int client, int args)
 		
 		Format(menuinfo, sizeof(menuinfo), " [TF2] Bus", client);
 		menu.AddItem("5", menuinfo);
+		
+		Format(menuinfo, sizeof(menuinfo), " [HL2] Jeep", client);
+		menu.AddItem("6", menuinfo);
 		
 		
 		menu.ExitBackButton = true;
@@ -469,8 +472,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 						
 						TeleportEntity(g_iSpawnCar[client], NULL_VECTOR, fcarAngle, NULL_VECTOR);
 						
-						if (StrEqual(szModel, "models/airboat.mdl"))
-							fcarAngle[1] += 90.0;
+						FixCarAngle(szModel, fcarAngle);
 						
 						AnglesNormalize(fcarAngle);
 						
@@ -504,8 +506,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 						TeleportEntity(g_iSpawnCar[client], NULL_VECTOR, fcarAngle, NULL_VECTOR);
 						
 						
-						if (StrEqual(szModel, "models/airboat.mdl"))
-							fcarAngle[1] += 90.0;
+						FixCarAngle(szModel, fcarAngle);
 						
 						AnglesNormalize(fcarAngle);
 						GetVecCar(fcarAngle, g_fCarSpeed[client], fCarVel);
@@ -515,8 +516,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					{  //Forward
 						g_fCarSpeed[client] += 2.0;
 						
-						if (StrEqual(szModel, "models/airboat.mdl"))
-							fcarAngle[1] += 90.0;
+						FixCarAngle(szModel, fcarAngle);
 						
 						AnglesNormalize(fcarAngle);
 						GetVecCar(fcarAngle, g_fCarSpeed[client], fCarVel);
@@ -526,8 +526,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					{  //Back
 						g_fCarSpeed[client] -= 2.0;
 						
-						if (StrEqual(szModel, "models/airboat.mdl"))
-							fcarAngle[1] += 90.0;
+						FixCarAngle(szModel, fcarAngle);
 						
 						AnglesNormalize(fcarAngle);
 						GetVecCar(fcarAngle, g_fCarSpeed[client], fCarVel);
@@ -537,8 +536,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					{  //Reduce speed due to ground + air friction
 						g_fCarSpeed[client] -= 1.0;
 						
-						if (StrEqual(szModel, "models/airboat.mdl"))
-							fcarAngle[1] += 90.0;
+						FixCarAngle(szModel, fcarAngle);
 						
 						AnglesNormalize(fcarAngle);
 						GetVecCar(fcarAngle, g_fCarSpeed[client], fCarVel);
@@ -548,8 +546,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					{  //Reduce speed due to ground + air friction
 						g_fCarSpeed[client] += 1.0;
 						
-						if (StrEqual(szModel, "models/airboat.mdl"))
-							fcarAngle[1] += 90.0;
+						FixCarAngle(szModel, fcarAngle);
 						
 						AnglesNormalize(fcarAngle);
 						GetVecCar(fcarAngle, g_fCarSpeed[client], fCarVel);
@@ -585,6 +582,8 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					fcarPosition[2] += 13.0;
 				else if (StrEqual(szModel, "models/props_well/hand_truck01.mdl"))
 					fcarPosition[2] += 13.0;
+				else if (StrEqual(szModel, "models/buggy.mdl"))
+					fcarPosition[2] += 13.0;
 				else
 					fcarPosition[2] -= 25.5;
 				
@@ -606,6 +605,12 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	return Plugin_Continue;
 }
 
+void FixCarAngle(char []szModel, float fcarAngle[3])
+{
+	if (StrEqual(szModel, "models/airboat.mdl") || StrEqual(szModel, "models/buggy.mdl"))
+		fcarAngle[1] += 90.0;
+}
+
 int BuildCar(int client, int model)
 {
 	char strModel[100];
@@ -620,6 +625,8 @@ int BuildCar(int client, int model)
 		strcopy(strModel, sizeof(strModel), "models/airboat.mdl");
 	else if (model == 5)
 		strcopy(strModel, sizeof(strModel), "models/props_soho/bus001.mdl");
+	else if (model == 6)
+		strcopy(strModel, sizeof(strModel), "models/buggy.mdl");
 	//strcopy(strModel, sizeof(strModel), "models/props_vehicles/truck001a.mdl");
 	
 	int car = CreateEntityByName("prop_physics_override");
@@ -721,7 +728,7 @@ void GetVecCar(float angle[3], float speed, float outVel[3])
 	
 	outVel[0] = speed * Cosine(local_angle[0]) * Cosine(local_angle[1]);
 	outVel[1] = speed * Cosine(local_angle[0]) * Sine(local_angle[1]);
-	outVel[2] = speed * Sine(local_angle[0]) * Cosine(local_angle[1]) * Sine(local_angle[2]); //speed*Sine(local_angle[0]); 
+	outVel[2] = -30.0;  //Gravity //speed * Sine(local_angle[0]) * Cosine(local_angle[1]) * Sine(local_angle[2]); plane  //speed*Sine(local_angle[0]); default
 }
 
 public void AnglesNormalize(float vAngles[3])
