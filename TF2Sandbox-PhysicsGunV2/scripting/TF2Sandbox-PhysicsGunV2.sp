@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "5.0"
+#define PLUGIN_VERSION "5.0a"
 
 #include <sourcemod>
 #include <sdktools>
@@ -57,9 +57,10 @@ float g_fGrabbingDistance[MAXPLAYERS + 1]; //MaxDistance
 float g_fGrabbingDifference[MAXPLAYERS + 1][3]; //Difference
 bool g_bGrabbingAttack2[MAXPLAYERS + 1];
 bool g_bGrabbingRotate[MAXPLAYERS + 1];
+bool g_bLaserCoolDown[MAXPLAYERS + 1];
 
-Handle g_hLookupBone;
-Handle g_hGetBonePosition;
+//Handle g_hLookupBone;
+//Handle g_hGetBonePosition;
 
 public void OnPluginStart()
 {
@@ -76,6 +77,7 @@ public void OnPluginStart()
 		
 	//https://github.com/Pelipoika/TF2_NextBot/blob/master/npc_heavyweapons.sp#L2748-L2768
 	//CBaseAnimating::LookupBone( const char *szName )
+	/*
 	StartPrepSDKCall(SDKCall_Entity);
 	PrepSDKCall_SetSignature(SDKLibrary_Server, "\x55\x8B\xEC\x56\x8B\xF1\x80\xBE\x41\x03\x00\x00\x00\x75\x2A\x83\xBE\x6C\x04\x00\x00\x00\x75\x2A\xE8\x2A\x2A\x2A\x2A\x85\xC0\x74\x2A\x8B\xCE\xE8\x2A\x2A\x2A\x2A\x8B\x86\x6C\x04\x00\x00\x85\xC0\x74\x2A\x83\x38\x00\x74\x2A\xFF\x75\x08\x50\xE8\x2A\x2A\x2A\x2A\x83\xC4\x08\x5E", 68);
 	PrepSDKCall_AddParameter(SDKType_String, SDKPass_Pointer);
@@ -89,7 +91,7 @@ public void OnPluginStart()
 	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef, _, VENCODE_FLAG_COPYBACK);
 	PrepSDKCall_AddParameter(SDKType_QAngle, SDKPass_ByRef, _, VENCODE_FLAG_COPYBACK);
 	if ((g_hGetBonePosition = EndPrepSDKCall()) == INVALID_HANDLE) SetFailState("Failed to create SDKCall for CBaseAnimating::GetBonePosition signature!");
-	
+	*/
 	g_hHud = CreateHudSynchronizer();
 }
 
@@ -127,6 +129,7 @@ public void OnMapStart() //Precache Sound and Model
 	g_ModelIndex2 = PrecacheModel(MODEL_PHYSICSLASER2);
 	g_iPhysicsGun = PrecacheModel(MODEL_PHYSICSGUNVIEWMODEL);
 	g_iPhysicsGunWorld = PrecacheModel(MODEL_PHYSICSGUN);
+	
 	PrecacheSound(SOUND_PICKUP);
 	PrecacheSound(SOUND_DROP);
 	PrecacheSound(SOUND_LOOP);
@@ -158,20 +161,23 @@ public Action WeaponSwitchHookPost(int client, int entity)
 		}
 		else
 		{
-			char sArmModel[128];
-			switch (TF2_GetPlayerClass(client))
+			if(GetEntProp(iViewModel, Prop_Send, "m_nModelIndex", 2) == g_iPhysicsGun)
 			{
-				case TFClass_Scout: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_scout_arms.mdl");
-				case TFClass_Soldier: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_soldier_arms.mdl");
-				case TFClass_Pyro: 		Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_pyro_arms.mdl");
-				case TFClass_DemoMan: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_demo_arms.mdl");
-				case TFClass_Heavy:		Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_heavy_arms.mdl");
-				case TFClass_Engineer: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_engineer_arms.mdl");
-				case TFClass_Medic: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_medic_arms.mdl");
-				case TFClass_Sniper: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_sniper_arms.mdl");
-				case TFClass_Spy: 		Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_spy_arms.mdl");
+				char sArmModel[128];
+				switch (TF2_GetPlayerClass(client))
+				{
+					case TFClass_Scout: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_scout_arms.mdl");
+					case TFClass_Soldier: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_soldier_arms.mdl");
+					case TFClass_Pyro: 		Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_pyro_arms.mdl");
+					case TFClass_DemoMan: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_demo_arms.mdl");
+					case TFClass_Heavy:		Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_heavy_arms.mdl");
+					case TFClass_Engineer: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_engineer_arms.mdl");
+					case TFClass_Medic: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_medic_arms.mdl");
+					case TFClass_Sniper: 	Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_sniper_arms.mdl");
+					case TFClass_Spy: 		Format(sArmModel, sizeof(sArmModel), "models/weapons/c_models/c_spy_arms.mdl");
+				}
+				if(strlen(sArmModel) > 0)	SetEntProp(iViewModel, Prop_Send, "m_nModelIndex", PrecacheModel(sArmModel, true), 2);
 			}
-			if(strlen(sArmModel) > 0)	SetEntProp(iViewModel, Prop_Send, "m_nModelIndex", PrecacheModel(sArmModel, true), 2);
 		}
 	}	
 }
@@ -317,6 +323,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 						
 						if(GetConVarBool(g_cvPhysics)) g_bGrabbingAttack2[client] = false;
 						g_bGrabbingRotate[client] = false;
+						g_bLaserCoolDown[client] = false;
 						
 						EmitSoundToAll(SOUND_PICKUP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 1.0);
 						//EmitSoundToAll(SOUND_LOOP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.5); //Buggy
@@ -698,48 +705,147 @@ public void OnPluginEnd()
 //---------------------------------
 void SetEntityGlows(int client, float fEOrigin[3]) //Set the Glow and laser
 {
+	if(g_bLaserCoolDown[client])
+		return;
+		
 	int team = GetClientTeam(client);
 	
-	float fEndOnEntityPosition[3], fLocal_Origin[3], fLocal_EOrigin[3], fLocal_Angle[3];
+	float fEndOnEntityPosition[3], fLocal_Origin[3], fLocal_EOrigin[3];// , fLocal_Angle[3];
 	CopyVector(fEOrigin, fLocal_EOrigin);
 	
-	int iBone = SDKCall(g_hLookupBone, client, "weapon_bone"); //weapon_bone
-	if(iBone != -1)
+	//int iBone = SDKCall(g_hLookupBone, client, "weapon_bone"); //weapon_bone
+	//if(iBone != -1)
 	{
-		SDKCall(g_hGetBonePosition, client, iBone, fLocal_Origin, fLocal_Angle);
-		fLocal_Origin[2] += 19.5;
+		//SDKCall(g_hGetBonePosition, client, iBone, fLocal_Origin, fLocal_Angle);
+		//fLocal_Origin[2] += 19.5;
+		GetClientEyePosition(client, fLocal_Origin);
+		fLocal_Origin[2] -= 15.0;
 	
 		GetClientSightEnd(fLocal_Origin, fLocal_EOrigin, fEndOnEntityPosition);	//Glow on Grab Entity
 		if(team == 2)	TE_SetupGlowSprite(fEndOnEntityPosition, g_iRedGlow, 0.1, 0.3, 100); 
 		else if(team == 3)	TE_SetupGlowSprite(fEndOnEntityPosition, g_iBlueGlow, 0.1, 0.3, 100);	
 		TE_SendToAll();												
 	
+		SetCurveBeam(client, fLocal_EOrigin); //Laser on client and Entity
+		/*
 		if(team == 2) TE_SetupBeamPoints(fLocal_Origin, fLocal_EOrigin, g_ModelIndex2, g_HaloIndex, 0, 15, 0.1, 1.0, 1.0, 1, 0.0, {255, 100, 100, 200}, 10);	//Laser on client and Entity
 		else if(team == 3) TE_SetupBeamPoints(fLocal_Origin, fLocal_EOrigin, g_ModelIndex, g_HaloIndex, 0, 15, 0.1, 1.0, 1.0, 1, 0.0, {255, 255, 255, 200}, 10);
 		TE_SendToAll();	
-		
+		*/
 		if(team == 2)	TE_SetupGlowSprite(fLocal_Origin, g_iRedGlow, 0.1, 0.3, 20); //Glow on Client
 		else if(team == 3)	TE_SetupGlowSprite(fLocal_Origin, g_iBlueGlow, 0.1, 0.3, 20);
 		TE_SendToAll();
-	}		
+	}
+	CreateTimer(0.01, Timer_LaserCoolDown, client);
+	//g_bLaserCoolDown[client] = true;	
+}
+
+//client Index, end point
+void SetCurveBeam(int client, float fGrabbingEntityPoint[3])
+{
+	float fNormal[3];
+	
+	float fOrigin[3];
+	GetClientEyePosition(client, fOrigin);
+	fOrigin[2] -= 6.0;
+	
+	float distance = GetVectorDistance(fOrigin, fGrabbingEntityPoint)/10;
+	
+	
+	int iModelIndex = g_ModelIndex;
+	int iColour[4] =  { 255, 255, 255, 255 };
+	if (GetClientTeam(client) == 2)	//red
+	{
+		iModelIndex = g_ModelIndex2;
+		iColour =  { 255, 100, 100, 255 };
+	}
+	
+	float fPoint1[3], fPoint1Angle[3];
+	GetClientAimPosition(client, distance, fPoint1, fNormal, tracerayfilterrocket, client);
+	GetVectorAnglesTwoPoints(fOrigin, fGrabbingEntityPoint, fPoint1Angle);
+	TE_SetupBeamPoints(fOrigin, fPoint1, iModelIndex, g_HaloIndex, 0, 15, 0.1, 0.5, 1.5, 1, 0.0, iColour, 0); //Start
+	TE_SendToAll(0.1);
+	
+	float fPoint2[3], fPoint2Angle[3], fLastPoint[3], fLastAngle[3];
+	CopyVector(fPoint1, fLastPoint);
+	CopyVector(fPoint1Angle, fLastAngle);
+	for (int i = 0; i <= 5; i++)
+	{	
+		GetPointAimPosition(fLastPoint, fLastAngle, distance, fPoint2, fNormal, tracerayfilterrocket, client);
+		GetVectorAnglesTwoPoints(fLastPoint, fGrabbingEntityPoint, fPoint2Angle);
+		TE_SetupBeamPoints(fLastPoint, fPoint2, iModelIndex, g_HaloIndex, 0, 15, 0.1, 0.5, 1.5, 1, 0.0, iColour, 0); //Curve
+		TE_SendToAll(0.1);
+		
+		CopyVector(fPoint2, fLastPoint);
+		CopyVector(fPoint2Angle, fLastAngle);
+	}
+	
+	TE_SetupBeamPoints(fLastPoint, fGrabbingEntityPoint, iModelIndex, g_HaloIndex, 0, 15, 0.1, 0.5, 1.5, 1, 0.0, iColour, 0); //End
+	TE_SendToAll(0.1);		
+}
+
+stock bool GetPointAimPosition(float cleyepos[3], float cleyeangle[3], float maxtracedistance, float resultvecpos[3], float resultvecnormal[3], TraceEntityFilter Tfunction, int filter)
+{
+	float eyeanglevector[3];
+
+	Handle traceresulthandle = INVALID_HANDLE;
+	
+	traceresulthandle = TR_TraceRayFilterEx(cleyepos, cleyeangle, MASK_SOLID, RayType_Infinite, Tfunction, filter);
+	
+	if(TR_DidHit(traceresulthandle) == true)
+	{
+		float endpos[3];
+		TR_GetEndPosition(endpos, traceresulthandle);
+		TR_GetPlaneNormal(traceresulthandle, resultvecnormal);
+		
+		if((GetVectorDistance(cleyepos, endpos) <= maxtracedistance) || maxtracedistance <= 0)
+		{	
+			resultvecpos[0] = endpos[0];
+			resultvecpos[1] = endpos[1];
+			resultvecpos[2] = endpos[2];
+			
+			CloseHandle(traceresulthandle);
+			return true;		
+		}
+		else
+		{	
+			GetAngleVectors(cleyeangle, eyeanglevector, NULL_VECTOR, NULL_VECTOR);
+			NormalizeVector(eyeanglevector, eyeanglevector);
+			ScaleVector(eyeanglevector, maxtracedistance);
+			
+			AddVectors(cleyepos, eyeanglevector, resultvecpos);
+			
+			CloseHandle(traceresulthandle);
+			return true;
+		}	
+	}
+	CloseHandle(traceresulthandle);
+	return false;
 }
 
 void SetEntityGlowsNoEntity(int client, float fEndPosition[3]) //Set the Glow and laser when no entity
 {
 	int team = GetClientTeam(client);
 	
-	float fLocal_Origin[3], fLocal_Angle[3];
-	
-	int iBone = SDKCall(g_hLookupBone, client, "weapon_bone"); //weapon_bone
-	if(iBone != -1)
+	float fLocal_Origin[3];// , fLocal_Angle[3];
+	GetClientEyePosition(client, fLocal_Origin);
+	//int iBone = SDKCall(g_hLookupBone, client, "weapon_bone"); //weapon_bone
+	//if(iBone != -1)
 	{
-		SDKCall(g_hGetBonePosition, client, iBone, fLocal_Origin, fLocal_Angle);
-		fLocal_Origin[2] += 19.5;
+		//SDKCall(g_hGetBonePosition, client, iBone, fLocal_Origin, fLocal_Angle);
+		//fLocal_Origin[2] += 19.5;
 		//PrintToChatAll("%N bone %i origin %f %f %f angles %f %f %f", client, iBone, iorigin[0], iorigin[1], iorigin[2], iangles[0], iangles[1], iangles[2]);
+		
+		fLocal_Origin[2] -= 6.0;
 		if(team == 2) TE_SetupBeamPoints(fLocal_Origin, fEndPosition, g_ModelIndex2, g_HaloIndex, 0, 15, 0.1, 0.11, 0.1, 1, 0.0, {255, 100, 100, 200}, 1);	//Laser on client and Entity
 		else if(team == 3) TE_SetupBeamPoints(fLocal_Origin, fEndPosition, g_ModelIndex, g_HaloIndex, 0, 15, 0.1, 0.11, 0.1, 1, 0.0, {255, 255, 255, 200}, 1);
 		TE_SendToAll();		
 	}
+}
+
+public Action Timer_LaserCoolDown(Handle timer, int client)
+{
+	if(g_bLaserCoolDown[client]) g_bLaserCoolDown[client] = false;
 }
 
 int PhysicsGun_ChangeToPropPhysics(int client, int iEntity) //Change To prop_physics
