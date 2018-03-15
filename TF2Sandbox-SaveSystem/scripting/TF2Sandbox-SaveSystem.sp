@@ -16,7 +16,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "8.3c"
+#define PLUGIN_VERSION "8.5"
 
 #include <sourcemod>
 #include <sdktools>
@@ -43,6 +43,7 @@ Handle cviLoadSec;
 Handle cviLoadProps;
 Handle cviAdvertisement;
 Handle cvMapname;
+Handle cvPhysicsSpamProtect;
 
 char g_cCurrentMap[64];
 
@@ -84,6 +85,7 @@ public void OnPluginStart()
 	cviLoadProps = CreateConVar("sm_tf2sb_ss_loadprops", "3", "(1 - 60) Load Sec/Props (Work on sm_tf2sb_ss_loadmode 2 only)", 0, true, 1.0, true, 60.0);
 	cviAdvertisement = CreateConVar("sm_tf2sb_ss_ads", "30.0", "(10.0 - 60.0) Advertisement loop time", 0, true, 10.0, true, 60.0);
 	cvMapname = CreateConVar("sm_tf2sb_ss_mapcheck", "", "Load map name of the file. (Nothing = Current map)");
+	cvPhysicsSpamProtect = CreateConVar("sm_tf2sb_ss_psprotect", "1", "Prevent players to load prop_physics", 0, true, 0.0, true, 1.0);
 	
 	RegAdminCmd("sm_ss", Command_MainMenu, 0, "Open SaveSystem menu");
 	RegAdminCmd("sm_ssload", Command_LoadDataFromDatabase, ADMFLAG_GENERIC, "Usage: sm_ssload <targetname|steamid64> <slot>");
@@ -1340,7 +1342,7 @@ bool LoadProps(int loader, char[] szLoadString)
 	//	iHealth = 999999999;
 	//if (iHealth == 1)
 	//	iHealth = 50;
-	if (StrContains(szClass, "prop_dynamic") >= 0)
+	if (GetConVarBool(cvPhysicsSpamProtect) || StrContains(szClass, "prop_dynamic") >= 0)
 	{
 		Obj_LoadEntity = CreateEntityByName("prop_dynamic_override");
 		SetEntProp(Obj_LoadEntity, Prop_Send, "m_nSolidType", 6);
