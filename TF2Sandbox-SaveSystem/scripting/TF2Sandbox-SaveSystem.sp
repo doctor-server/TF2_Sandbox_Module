@@ -16,7 +16,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "8.5"
+#define PLUGIN_VERSION "9.0"
 
 #include <sourcemod>
 #include <sdktools>
@@ -193,6 +193,8 @@ public void OnClientPutInServer(int client)
 	if(g_bWaitingForPlayers)	CreateTimer(30.0, Timer_Load, client);
 	else CreateTimer(5.0, Timer_Load, client);
 	//------------
+	
+	
 }
 
 public void OnClientDisconnect(int client)
@@ -356,6 +358,11 @@ public int Handler_CacheMenu(Menu menu, MenuAction action, int client, int selec
 *******************************************************************************************/
 public Action Command_MainMenu(int client, int args)
 {
+	if(g_SqlRunning)
+	{
+		Build_PrintToAll(" Cloud Storage is currently Loading!");
+		return Plugin_Handled;
+	}
 	if (g_bEnabled)
 	{
 		char menuinfo[1024];
@@ -1173,13 +1180,7 @@ void LoadDataSteamID(int loader, char[] SteamID64, int slot) // Load Data from d
 
 void LoadFunction(int loader, int slot, char cFileName[255])
 {
-	if (GetClientSpawnedEntities(loader) >= GetClientMaxHoldEntities())
-	{
-		ClientCommand(loader, "playgamesound \"%s\"", "buttons/button10.wav");
-		Build_PrintToChat(loader, "You've hit the prop limit!");
-		PrintCenterText(loader, "You've hit the prop limit!");
-	}
-	else if (GetConVarInt(cviLoadMode) == 2)
+	if (GetConVarInt(cviLoadMode) == 2)
 	{
 		Handle dp;
 		CreateDataTimer(0.05, Timer_LoadProps, dp);
@@ -1201,7 +1202,7 @@ void LoadFunction(int loader, int slot, char cFileName[255])
 				int g_iCountLoop = 0;
 				char szLoadString[255];
 				
-				for (int i = 0; i < 4096; i++)if (ReadFileLine(g_hFileEditting[loader], szLoadString, sizeof(szLoadString)))
+				while(ReadFileLine(g_hFileEditting[loader], szLoadString, sizeof(szLoadString)))
 				{
 					if (StrContains(szLoadString, "ent") != -1 && StrContains(szLoadString, ";") == -1) //Map name have ent sytax??? Holy
 					{
@@ -1218,13 +1219,6 @@ void LoadFunction(int loader, int slot, char cFileName[255])
 					Build_PrintToChat(loader, "Load Result >> Loaded: \x04%i\x01, Error: \x04%i\x01 >> Cache Loaded", g_iCountEntity, g_iCountLoop - g_iCountEntity);
 				else
 					Build_PrintToChat(loader, "Load Result >> Loaded: \x04%i\x01, Error: \x04%i\x01 >> Loaded Slot\x04%i\x01", g_iCountEntity, g_iCountLoop - g_iCountEntity, slot);
-				
-				if (GetClientSpawnedEntities(loader) >= GetClientMaxHoldEntities())
-				{
-					ClientCommand(loader, "playgamesound \"%s\"", "buttons/button10.wav");
-					Build_PrintToChat(loader, "You've hit the prop limit!");
-					PrintCenterText(loader, "You've hit the prop limit!");
-				}
 			}
 		}
 	}
@@ -1269,13 +1263,6 @@ public Action Timer_LoadProps(Handle timer, Handle dp)
 					Build_PrintToChat(loader, "Load Result >> Loaded: \x04%i\x01, Error: \x04%i\x01 >> Cache Loaded", g_iCountEntity, g_iCountLoop - g_iCountEntity);
 				else
 					Build_PrintToChat(loader, "Load Result >> Loaded: \x04%i\x01, Error: \x04%i\x01 >> Loaded Slot\x04%i\x01", g_iCountEntity, g_iCountLoop - g_iCountEntity, slot);
-				
-				if (GetClientSpawnedEntities(loader) >= GetClientMaxHoldEntities())
-				{
-					ClientCommand(loader, "playgamesound \"%s\"", "buttons/button10.wav");
-					Build_PrintToChat(loader, "You've hit the prop limit!");
-					PrintCenterText(loader, "You've hit the prop limit!");
-				}
 			}
 			else
 			{
@@ -1353,7 +1340,7 @@ bool LoadProps(int loader, char[] szLoadString)
 	else if (StrContains(szClass, "prop_physics") >= 0)
 		Obj_LoadEntity = CreateEntityByName(szClass);
 	
-	if (Obj_LoadEntity > MaxClients && IsValidEntity(Obj_LoadEntity) && GetClientSpawnedEntities(loader) < GetClientMaxHoldEntities())
+	if (Obj_LoadEntity > MaxClients && IsValidEntity(Obj_LoadEntity))
 	{
 		if (Build_RegisterEntityOwner(Obj_LoadEntity, loader))
 		{
@@ -1706,25 +1693,6 @@ void GetClientSteamID(int client, char[] SteamID64out)
 	strcopy(SteamID64out, sizeof(SteamID64), SteamID64);
 }
 
-int GetClientSpawnedEntities(int client)
-{
-	char szClass[32];
-	int iCount = 0;
-	for (int i = MaxClients; i < MAX_HOOK_ENTITIES; i++)if (IsValidEdict(i))
-	{
-		GetEdictClassname(i, szClass, sizeof(szClass));
-		if ((StrContains(szClass, "prop_dynamic") >= 0 || StrContains(szClass, "prop_physics") >= 0) && !StrEqual(szClass, "prop_ragdoll") && Build_ReturnEntityOwner(i) == client)
-			iCount++;
-	}
-	return iCount;
-}
-
-int GetClientMaxHoldEntities()
-{
-	Handle iMax = FindConVar("sbox_maxpropsperplayer");
-	return GetConVarInt(iMax);
-}
-
 //-----------[ Check Function ]--------------------------------------------------------
 bool DataFileExist(int client, int slot) //Is the data file exist? true : false 
 {
@@ -1802,12 +1770,11 @@ public void Sql_LoadData(int client)
 		char SteamID[18];
 		GetClientSteamID(client, SteamID);
 		char GetData[1024];
-		for (int i = 1; i < 500; i++)
+		for (int i = 1; i <= g_iCloudRow[client]; i++)
 		{
 			Format(GetData, sizeof(GetData), "SELECT * FROM `%s` WHERE id = '%i';", SteamID, i);
 			SQL_TQuery(g_DB, SQLLoadQuery, GetData, client);
 		}
-		
 	}
 }
 
@@ -1931,7 +1898,9 @@ public Action Timer_SqlRunning(Handle timer, Handle dp)
 	int iCount = ReadPackCell(dp);
 	int iType = ReadPackCell(dp);
 	
-	if(g_iCloudRow[client] == iCount && iType == -1)
+	if(!IsValidClient(client))
+		return;
+	if(g_iCloudRow[client] >= iCount && iType == -1)
 	{
 		g_SqlRunning = false;
 		Command_CloudMenu(client, 0);
