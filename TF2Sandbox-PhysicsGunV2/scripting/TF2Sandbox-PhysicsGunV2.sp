@@ -100,8 +100,15 @@ public Action Command_EquipPhysicsGun(int client, int args) //Give PhysicsGun v2
 	if(IsValidClient(client) && IsPlayerAlive(client))
 	{
 		int iWeapon = GetPlayerWeaponSlot(client, 1);
-		if(IsValidEntity(iWeapon)) SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iWeapon);
-		SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", GetPlayerWeaponSlot(client, 1));
+		int iActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+		if(IsValidEntity(iWeapon))
+		{	
+			if(iWeapon == iActiveWeapon)	//M
+			{
+				SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", GetPlayerWeaponSlot(client, 0));
+			}
+			else	SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", iWeapon);
+		}
 		
 		if(!TF2Items_CheckWeapon(g_iPhysicGunIndex))
 		{
@@ -252,6 +259,10 @@ public void Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast
 
 public Action WeaponSwitchHook(int client, int entity)
 {
+	if(IsValidEntity(g_iGrabbingEntity[client][0]))
+	{
+		TE_ParticleToAll("ping_circle", _, _, _, g_iGrabbingEntity[client][0], -1, -1, true);
+	}
 	return Plugin_Handled;	
 }
 	
@@ -508,13 +519,14 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 					
 					if(buttons & IN_ATTACK3)
 					{
-						TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fClientAngle, NULL_VECTOR);				
+						//TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fClientAngle, NULL_VECTOR);				
 						//int matrix[matrix3x4_t];
 						//matrix3x4FromAngles(fClientAngle, g_fGrabbingDifference[client], matrix);
 						//float fLocalAngle[3], fWorldAngle[3];			
 						//TransformAnglesToLocalSpace(fClientAngle, fLocalAngle, matrix);	
 						//TransformAnglesToWorldSpace(fLocalAngle, fWorldAngle, matrix);
 						//TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, fWorldAngle, NULL_VECTOR);
+						SetEntityOnFire(g_iGrabbingEntity[client][0]);
 					}
 					
 					if(GetConVarBool(g_cvPhysics) && CheckCommandAccess(client, "sm_admin", ADMFLAG_GENERIC) && !IsPropBuggedDoor(g_iGrabbingEntity[client][0])) //Enable Physics function, Optional reason: FPS drop
@@ -782,6 +794,13 @@ void SetCurveBeam(int client, float fGrabbingEntityPoint[3])
 	
 	TE_SetupBeamPoints(fLastPoint, fGrabbingEntityPoint, iModelIndex, g_HaloIndex, 0, 15, 0.1, 0.5, 1.5, 1, 0.0, iColour, 0); //End
 	TE_SendToAll(0.1);		
+}
+
+void SetEntityOnFire(int iEntity)
+{
+	//Peli Method
+	TE_ParticleToAll("burningplayer_red", _, _, _, iEntity, -1, -1, true);
+	TE_ParticleToAll("burningplayer_red", _, _, _, iEntity, -1, -1, false);
 }
 
 stock bool GetPointAimPosition(float cleyepos[3], float cleyeangle[3], float maxtracedistance, float resultvecpos[3], float resultvecnormal[3], TraceEntityFilter Tfunction, int filter)
@@ -1222,3 +1241,59 @@ bool IsHoldingPhysicsGun(int client)
 	}
 	return false;
 } //@
+
+//Peli script!
+void TE_ParticleToAll(char[] Name, float origin[3]=NULL_VECTOR, float start[3]=NULL_VECTOR, float angles[3]=NULL_VECTOR, int entindex=-1, int attachtype=-1,int attachpoint=-1, bool resetParticles=true)
+{
+    // find string table
+    int tblidx = FindStringTable("ParticleEffectNames");
+    if (tblidx==INVALID_STRING_TABLE) 
+    {
+        LogError("Could not find string table: ParticleEffectNames");
+        return;
+    }
+    
+    // find particle index
+    char tmp[256];
+    int count = GetStringTableNumStrings(tblidx);
+    int stridx = INVALID_STRING_INDEX;
+    int i;
+    for (i=0; i<count; i++)
+    {
+        ReadStringTable(tblidx, i, tmp, sizeof(tmp));
+        if (StrEqual(tmp, Name, false))
+        {
+            stridx = i;
+            break;
+        }
+    }
+    if (stridx==INVALID_STRING_INDEX)
+    {
+        LogError("Could not find particle: %s", Name);
+        return;
+    }
+    
+    TE_Start("TFParticleEffect");
+    TE_WriteFloat("m_vecOrigin[0]", origin[0]);
+    TE_WriteFloat("m_vecOrigin[1]", origin[1]);
+    TE_WriteFloat("m_vecOrigin[2]", origin[2]);
+    TE_WriteFloat("m_vecStart[0]", start[0]);
+    TE_WriteFloat("m_vecStart[1]", start[1]);
+    TE_WriteFloat("m_vecStart[2]", start[2]);
+    TE_WriteVector("m_vecAngles", angles);
+    TE_WriteNum("m_iParticleSystemIndex", stridx);
+    if (entindex!=-1)
+    {
+        TE_WriteNum("entindex", entindex);
+    }
+    if (attachtype!=-1)
+    {
+        TE_WriteNum("m_iAttachType", attachtype);
+    }
+    if (attachpoint!=-1)
+    {
+        TE_WriteNum("m_iAttachmentPointIndex", attachpoint);
+    }
+    TE_WriteNum("m_bResetParticles", resetParticles ? 1 : 0);    
+    TE_SendToAll();
+}

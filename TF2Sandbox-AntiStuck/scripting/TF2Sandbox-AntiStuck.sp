@@ -74,11 +74,11 @@ stock bool IsPlayerStuckInEnt(int client)
 
 public bool TraceRayHitOnlyEnt(int entity, int contentsMask)
 {
-	if (IsValidEdict(entity) && GetEntProp(entity, Prop_Data, "m_CollisionGroup", 4) != 2)
+	if (IsValidEdict(entity) && !IsValidClient(entity) && GetEntProp(entity, Prop_Data, "m_CollisionGroup", 4) != 2)
 	{
 		char szClass[64];
 		GetEdictClassname(entity, szClass, sizeof(szClass));
-		if ((StrContains(szClass, "prop_dynamic") >= 0 || StrContains(szClass, "prop_physics") >= 0) && !StrEqual(szClass, "prop_ragdoll"))
+		if ((StrContains(szClass, "prop_dynamic") >= 0 || StrContains(szClass, "prop_physics") >= 0))// && !StrEqual(szClass, "prop_ragdoll"))
 			return true;
 	}
 	return false;
