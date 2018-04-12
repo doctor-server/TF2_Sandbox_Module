@@ -3,7 +3,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "6.5"
+#define PLUGIN_VERSION "8.0"
 
 #include <sourcemod>
 #include <sdktools>
@@ -43,11 +43,11 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 {
 	if (GetConVarBool(g_hEnabled))
 	{
-		if (IsValidClient(client) && IsPlayerAlive(client) && GetEntityMoveType(client) != MOVETYPE_NOCLIP && !(buttons & IN_ATTACK) && !(buttons & IN_DUCK) && IsPlayerStuckInEnt(client))
+		if (IsValidClient(client) && IsPlayerAlive(client) && GetEntityMoveType(client) != MOVETYPE_NOCLIP && IsPlayerStuckInEnt(client))
 		{ 
-			int iType = GetEntProp(client, Prop_Data, "m_nWaterLevel");
+			//int iType = GetEntProp(client, Prop_Data, "m_nWaterLevel");
 			//PrintCenterText(client, "%i", iType);
-			if (iType == 0) //Not in water
+			//if (iType == 0) //Not in water
 			{
 				float iPosition[3];
 				GetClientAbsOrigin(client, iPosition);
@@ -68,20 +68,25 @@ stock bool IsPlayerStuckInEnt(int client)
 	
 	GetClientAbsOrigin(client, vecOrigin);
 	
-	TR_TraceHullFilter(vecOrigin, vecOrigin, vecMin, vecMax, MASK_ALL, TraceRayHitOnlyEnt);
-	return TR_DidHit();
+	TR_TraceHullFilter( vecOrigin, vecOrigin, vecMin, vecMax, MASK_PLAYERSOLID, TraceRayHitOnlyEnt);
+	
+	int entity = TR_GetEntityIndex();
+	if (IsValidEdict(entity) && GetEntProp(entity, Prop_Data, "m_CollisionGroup", 4) != 2)
+	{
+		char szClass[64];
+		GetEdictClassname(entity, szClass, sizeof(szClass));
+		if (StrEqual(szClass, "prop_dynamic") && !StrEqual(szClass, "prop_ragdoll"))
+		{
+			if(IsValidClient(Build_ReturnEntityOwner(entity)))
+				return true;
+		}
+	}
+	return false;
 }
 
 public bool TraceRayHitOnlyEnt(int entity, int contentsMask)
 {
-	if (IsValidEdict(entity) && !IsValidClient(entity) && GetEntProp(entity, Prop_Data, "m_CollisionGroup", 4) != 2)
-	{
-		char szClass[64];
-		GetEdictClassname(entity, szClass, sizeof(szClass));
-		if ((StrContains(szClass, "prop_dynamic") >= 0 || StrContains(szClass, "prop_physics") >= 0))// && !StrEqual(szClass, "prop_ragdoll"))
-			return true;
-	}
-	return false;
+	return (entity > MaxClients);
 }
 
 stock bool IsValidClient(int client)

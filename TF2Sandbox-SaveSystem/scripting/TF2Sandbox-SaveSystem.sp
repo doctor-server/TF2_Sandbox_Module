@@ -16,7 +16,7 @@
 #define DEBUG
 
 #define PLUGIN_AUTHOR "Battlefield Duck"
-#define PLUGIN_VERSION "9.0"
+#define PLUGIN_VERSION "9.1"
 
 #include <sourcemod>
 #include <sdktools>
@@ -1483,6 +1483,21 @@ bool LoadProps(int loader, char[] szLoadString)
 					Format(szFormatStr, sizeof(szFormatStr), "%s,setanimation,RavenDoor_Drop,7", szName);
 					DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
 				}
+			}
+			else if (StrEqual(szModel, "models/combine_gate_citizen.mdl") 
+			|| StrEqual(szModel, "models/combine_gate_Vehicle.mdl")
+			|| StrEqual(szModel, "models/props_doors/doorKLab01.mdl")
+			|| StrEqual(szModel, "models/props_lab/elevatordoor.mdl"))
+			{
+				iRandom = GetRandomInt(1000, 5000);
+				IntToString(iRandom, DoorIndex, sizeof(DoorIndex));
+				Format(szFormatStr, sizeof(szFormatStr), "door%s", DoorIndex);
+				DispatchKeyValue(Obj_LoadEntity, "targetname", szFormatStr);
+				
+				Format(szFormatStr, sizeof(szFormatStr), "%s,setanimation,open,0", DoorIndex);
+				DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
+				Format(szFormatStr, sizeof(szFormatStr), "%s,setanimation,close,4", DoorIndex);
+				DispatchKeyValue(Obj_LoadEntity, "OnHealthChanged", szFormatStr);
 			}
 			
 			return true;
