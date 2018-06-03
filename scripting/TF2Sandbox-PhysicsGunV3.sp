@@ -15,6 +15,15 @@
 [Z] Set particle
 */
 
+
+/*Change log
+1.0 - first release
+2.0 - Add Curve Laser
+2.1 - Reduce less by laser
+3.0 - Add Hints + Add sound effect
+3.2 - Edit the Hints + add rotate Z axis + apply force on prop_ragdoll + more particle effects
+	  Removed Size display in hint to prevent server crash
+*/
 #pragma semicolon 1
 
 #define DEBUG
@@ -56,24 +65,33 @@ public Plugin myinfo =
 #define SOUND_PICKUP 				"weapons/physcannon/physcannon_pickup.wav"
 #define SOUND_DROP 					"weapons/physcannon/physcannon_drop.wav"
 
-#define GRAB_HINTS "Obj: %s\nIndex: [%i]\nName: %s\nSkin: %i"
+#define GRAB_HINTS "Obj: %s\nIndex: %i [%i]\nName: %s"
 #define ROTATE_HINTS "Angle: %i %i %i\nDistance: %im\nSize: %.2f"
-#define SYNC_HINTS "[MOUSE2] Freeze/Resize\n[MOUSE3] Pull and Push\n[R] Rotate\n[T] Smart Copy\n[Z] Set Particle"
+#define SYNC_HINTS "[MOUSE2] Freeze\n[MOUSE3] Pull and Push\n[R] Rotate XY axis\n[R]+[MOUSE3] Rotate Z axis\n[R]+[Space] Resize\n[T] Smart Copy\n[Z] or [X] Set Particle"
 
 static int g_iPhysicGunIndex = 5696124;
 static int g_iPhysicGunWeaponIndex = 1001;
 static int g_iPhysicGunQuality = 1;
 static char g_strParticle[][] =
 {
-	"ping_circle", 
-	"community_sparkle", 
-	"ghost_pumpkin", 
-	"ghost_pumpkin_blueglow", 
-	"burningplayer_red", 
-	"burningplayer_blue", 
-	"burningplayer_rainbow", 
-	"hwn_skeleton_glow_blue", 
-	"hwn_skeleton_glow_red", 
+	"ping_circle", //1
+	"burningplayer_red", //2
+	"burningplayer_blue", //3
+	"burningplayer_rainbow", //4
+	"burningplayer_rainbow_blue", //5
+	"burningplayer_rainbow_red", //6	
+	"burningplayer_rainbow_flame", //7
+	"burningplayer_rainbow_glow_old", //8
+	//"burningplayer_rainbow_OLD",  //This is good
+	
+	"burningplayer_rainbow_glow_white", //1
+	"community_sparkle", //2
+	"ghost_pumpkin", //3
+	"ghost_pumpkin_flyingbits", //4
+	"ghost_pumpkin_blueglow", //5
+	"hwn_skeleton_glow_blue", //6
+	"hwn_skeleton_glow_red", //7
+
 };
 
 
@@ -94,7 +112,7 @@ int g_iPhysicsGun;
 int g_iPhysicsGunWorld;
 int g_HaloIndex;
 
-int g_iGrabbingEntity[MAXPLAYERS + 1][4]; //0. Entity, 1. Glow entity index, 2. Particle1 3. Particle2
+int g_iGrabbingEntity[MAXPLAYERS + 1][3]; //0. Entity, 1. Glow entity index, 2. Rope index
 float g_fGrabbingDistance[MAXPLAYERS + 1]; //MaxDistance
 float g_fGrabbingDifference[MAXPLAYERS + 1][3]; //Difference
 
@@ -115,17 +133,17 @@ public void OnPluginStart()
 	
 	g_cvMinSize =     CreateConVar("sm_tf2sb_pg_minpropscale", "0.2", "Minimum of the prop size when rescaling (0.1-10.0)", 0, true, 0.1, true, 10.0);
 	g_cvMaxSize =     CreateConVar("sm_tf2sb_pg_maxpropscale", "2.0", "Maximum of the prop size when rescaling (0.1-10.0)", 0, true, 0.1, true, 10.0);
-	g_cvScaleBypass = CreateConVar("sm_tf2sb_pg_adminscalebypass", "1", "1 = Bypass the restriction of the scale limit", 0, true, 0.0, true, 1.0);
+	g_cvScaleBypass = CreateConVar("sm_tf2sb_pg_adminscalebypass", "1", "1 = Bypass the restriction of the scale limit (admin only)", 0, true, 0.0, true, 1.0);
 	
 	RegAdminCmd("sm_pg", Command_EquipPhysicsGun, 0, "Equip Physics Gun!");
 
 	HookEvent("player_spawn", Event_PlayerSpawn);
 	
-	//Hook Key "E"
+	//Hook Voice command
 	HookUserMessage(GetUserMessageId("VoiceSubtitle"), VoiceHook, true);
 	
+	//Hook F1
 	AddCommandListener(Event_EquipPhysicsGun, "+showroundinfo");
-	AddCommandListener(Event_Hook, "+strafe");
 	
 	g_hHud = CreateHudSynchronizer();
 	g_hHudSyncBugDoor = CreateHudSynchronizer();
@@ -188,11 +206,6 @@ void EquipPhysicsGun(int client)
 	}
 }
 
-public Action Event_Hook(int client, const char[] command, int args) 
-{
-	EquipPhysicsGun(client);
-}
-
 //-----[ Start and End ]--------------------------------------------------(
 public void OnMapStart() //Precache Sound and Model
 {
@@ -209,7 +222,7 @@ public void OnMapStart() //Precache Sound and Model
 		g_iGrabbingEntity[i][0] = -1; //Grab entity
 		g_iGrabbingEntity[i][1] = -1; //tf_glow
 		g_iGrabbingEntity[i][2] = -1;
-		g_iGrabbingEntity[i][3] = -1;
+
 		if(IsValidClient(i)) 
 		{
 			SDKHook(i, SDKHook_WeaponSwitchPost, WeaponSwitchHookPost);
@@ -219,11 +232,9 @@ public void OnMapStart() //Precache Sound and Model
 
 public void OnClientPutInServer(int client)
 {
-	ResetClientAttribute(client);
 	g_iGrabbingEntity[client][0] = -1; //Grab entity
 	g_iGrabbingEntity[client][1] = -1; //tf_glow
 	g_iGrabbingEntity[client][2] = -1;
-	g_iGrabbingEntity[client][3] = -1;
 	g_fGrabbingDistance[client] = 0.0;
 	
 	g_fGrabbingAttack2Delay[client] = 0.0;
@@ -241,12 +252,12 @@ public void OnClientDisconnect(int client)
 	g_iGrabbingEntity[client][0] = -1; //Grab entity
 	g_iGrabbingEntity[client][1] = -1; //tf_glow
 	g_iGrabbingEntity[client][2] = -1;
-	g_iGrabbingEntity[client][3] = -1;
 	g_fGrabbingDistance[client] = 0.0;
 	SDKUnhook(client, SDKHook_WeaponCanSwitchTo, BlockWeaponSwtich);
 	SDKUnhook(client, SDKHook_WeaponSwitchPost, WeaponSwitchHookPost);
 }
 
+//Disable Weapon Drop on physics gun
 public void OnEntityCreated(int entity, const char[] classname)
 {
 	if (StrEqual(classname, "tf_dropped_weapon"))
@@ -287,13 +298,10 @@ public Action VoiceHook(UserMsg msg_id, Handle bf, const int[] players, int play
 	int voicemenu1 = BfReadByte(bf);
 	int voicemenu2 = BfReadByte(bf);
 	
-	if(IsValidClient(client) && IsPlayerAlive(client) && IsHoldingPhysicsGun(client) && IsValidEntity(g_iGrabbingEntity[client][0]))
+	if(IsValidClient(client) && IsPlayerAlive(client) && IsHoldingPhysicsGun(client) && IsValidEntity(EntRefToEntIndex(g_iGrabbingEntity[client][0])))
 	{
-		if(voicemenu1 == 0)	TE_ParticleToAll(g_strParticle[voicemenu2], _, _, _, g_iGrabbingEntity[client][0], -1, -1, true);
-		else if(voicemenu1 == 1)
-		{
-			
-		}
+		if(voicemenu1 == 0)	TE_ParticleToAll(g_strParticle[voicemenu2], _, _, _, EntRefToEntIndex(g_iGrabbingEntity[client][0]), -1, -1, true);
+		else if(voicemenu1 == 1) TE_ParticleToAll(g_strParticle[voicemenu2+8], _, _, _, EntRefToEntIndex(g_iGrabbingEntity[client][0]), -1, -1, true);
 		return Plugin_Handled;
 	}
 	return Plugin_Continue;
@@ -302,7 +310,6 @@ public Action VoiceHook(UserMsg msg_id, Handle bf, const int[] players, int play
 //Hook Key "Q" (Required last switched weapon to work properly and model reload) + Block Weapon Switch 
 public Action BlockWeaponSwtich(int client, int entity)
 {
-	PrintCenterText(client, "hi");
 	return Plugin_Handled;	
 }
 
@@ -341,14 +348,17 @@ public Action WeaponSwitchHookPost(int client, int entity)
 	}	
 }
 
+//Control the Outline of Entity send to which client
 public Action Hook_SetTransmit(int entity, int client) 
 {
 	//Pelipoka script again
 	SetEdictFlags(entity, GetEdictFlags(entity) & ~FL_EDICT_ALWAYS);
+	
 	if (g_iGrabbingEntity[client][1] == entity)
 		return Plugin_Continue;
 	
-	return Plugin_Handled;
+	//return Plugin_Handled;
+	return Plugin_Continue;
 }  
 //-------------------------------------------------------------)
 
@@ -381,7 +391,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		//Check Is it holding Physics Gun
 		if(IsHoldingPhysicsGun(client))
 		{
-			SetHudTextParams(0.7, 0.65, 1.0, 30, 144, 255, 255, 1, 6.0, 0.1, 0.1);
+			SetHudTextParams(0.74, 0.55, 1.0, 30, 144, 255, 255, 1, 6.0, 0.1, 0.1);
 
 			//TODO: Fix fading problem
 			if(TF2_GetPlayerClass(client) == TFClass_DemoMan || TF2_GetPlayerClass(client) == TFClass_Medic) //Fix medic and demo viewmodel not showing up problem
@@ -389,10 +399,11 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				SetEntProp(GetEntPropEnt(client, Prop_Send, "m_hViewModel"), Prop_Send, "m_nSequence", 2);
 			}
 			
-			if(buttons & IN_ATTACK)	//When In_Attack
+			//When Client mouse1
+			if(buttons & IN_ATTACK)	
 			{
 				//Bind the index of Grabbing entity
-				if(IsValidEntity(iEntity) && !IsValidEntity(g_iGrabbingEntity[client][0]))	
+				if(IsValidEntity(iEntity) && !IsValidEntity(EntRefToEntIndex(g_iGrabbingEntity[client][0])))	
 				{		
 					//If Sandbox game and grabbing client return,
 					if ((!(IsGameSandbox() && IsValidClient(iEntity)) && IsPropOwner(client, iEntity)) || CheckCommandAccess(client, "sm_admin", ADMFLAG_GENERIC))
@@ -400,32 +411,40 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 						//Hook Disable Change Weapon
 						SDKHook(client, SDKHook_WeaponCanSwitchTo, BlockWeaponSwtich);
 						
+						//Set entity to g_iGrabbingEntity[client][0]
 						SetEntityBindIndex(client, iEntity);
+						
+						TE_ParticleToAll("electrocuted_blue", _, _, _, EntRefToEntIndex(g_iGrabbingEntity[client][0]), -1, -1, false);
+						TE_ParticleToAll("electrocuted_blue", _, _, _, client, -1, -1, false);
+						//"electrocuted_blue_flash","electrocuted_gibbed_blue", "electrocuted_blue"
 					}
 				}
 				
-				if (IsValidEntity(g_iGrabbingEntity[client][0]))
+				if (IsValidEntity(EntRefToEntIndex(g_iGrabbingEntity[client][0])))
 				{
+					int entity = EntRefToEntIndex(g_iGrabbingEntity[client][0]);
+					
+					//Disable weapon switch (mouse wheel)
 					SetEntProp(client, Prop_Send, "m_iHideHUD", GetEntProp(client, Prop_Send, "m_iHideHUD") | HIDEHUD_WEAPONSELECTION);
+					
 					//Get Value
 					float fOrigin[3], fClientAngle[3], fEOrigin[3], fEndPosition[3];
 					GetClientEyePosition(client, fOrigin);
 					GetClientEyeAngles(client, fClientAngle);
-		
-					GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Data, "m_vecOrigin", fEOrigin);
+					GetEntPropVector(entity, Prop_Data, "m_vecOrigin", fEOrigin);
 						
 					float fAimPosition[3];
 					for (int i = 0; i <= 2; i++)
 						fAimPosition[i] = fEOrigin[i] - g_fGrabbingDifference[client][i];
 					
-					SetEntityGlows(client, g_iGrabbingEntity[client][0], fAimPosition);			
+					SetEntityGlows(client, entity, fAimPosition);			
 				
-					//Press R (GMod E button)
-					if(buttons & IN_RELOAD || buttons & IN_ATTACK3)
+					// Angle fixed
+					if(buttons & IN_RELOAD || buttons & IN_ATTACK3 || buttons & IN_ATTACK2)
 					{		
 						float fAngle[3];	
-						GetEntPropVector(g_iGrabbingEntity[client][0], Prop_Send, "m_angRotation", fAngle);	
-						float fSize = GetEntPropFloat(g_iGrabbingEntity[client][0], Prop_Send, "m_flModelScale");
+						GetEntPropVector(entity, Prop_Send, "m_angRotation", fAngle);	
+						float fSize = GetEntPropFloat(entity, Prop_Send, "m_flModelScale");
 						
 						if(g_fHintsDelay[client] <= GetGameTime() && !(buttons & IN_SCORE))
 						{
@@ -433,6 +452,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 							g_fHintsDelay[client] = GetGameTime() + 0.05;
 						}
 						
+						//Fix client aim angle (No lagge)
 						if(!(GetEntityFlags(client) & FL_FROZEN))
 						{
 							ZeroVector(vel);
@@ -443,7 +463,8 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 							SetEntityFlags(client, (GetEntityFlags(client) | FL_FROZEN));
 						}
 						
-						if(buttons & IN_RELOAD && !(buttons & IN_ATTACK3) && !(buttons & IN_ATTACK2))
+						//Rotate X and Y 						[R]
+						if(buttons & IN_RELOAD && !(buttons & IN_ATTACK2) && !(buttons & IN_ATTACK3) && !(buttons & IN_JUMP))
 						{
 							//Rotate--------------------------------------------------------------------
 							if(buttons & IN_DUCK) //Accurate
@@ -496,7 +517,8 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 							else
 							{
 								fAngle[1] += mouse[0] / (10/g_cvRotateSpeed.FloatValue); //Left Right
-								fAngle[0] += mouse[1] / (10/g_cvRotateSpeed.FloatValue); //Up Down				
+								fAngle[0] += mouse[1] / (10/g_cvRotateSpeed.FloatValue); //Up Down	
+								AnglesNormalize(fAngle);									
 							}
 	
 							if(buttons & IN_MOVELEFT)
@@ -541,15 +563,53 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 							//--------------------------------------------------------------------------
 							
 						}
-						//Simulate Mouse wheel
-						else if(buttons & IN_ATTACK3)
+						//Rotate Z only  						[R][3]
+						else if(buttons & IN_RELOAD && buttons & IN_ATTACK3 && !(buttons & IN_ATTACK2) && !(buttons & IN_JUMP))
 						{
-							if (mouse[1] < 0) //Up Down
+							if(buttons & IN_DUCK) //Accurate
+							{
+								if(g_fGrabbingRotateDelay[client] <= GetGameTime())
+								{
+									if(mouse[1] < 0)		
+									{
+										fAngle[2] -= 45.0; //Up
+									}
+									else if(mouse[1] > 0)
+									{									
+										fAngle[2] += 45.0; //Down
+									}
+	
+									//fAngle[2]   (0 - 360)
+									AnglesNormalize(fAngle);
+									if(0.0 < fAngle[2] && fAngle[2] < 45.0)				fAngle[2] = 0.0;
+									else if(45.0 < fAngle[2] && fAngle[2] < 90.0)		fAngle[2] = 45.0;
+									else if(90.0 < fAngle[2] && fAngle[2] < 135.0)		fAngle[2] = 90.0;
+									else if(135.0 < fAngle[2] && fAngle[2] < 180.0)		fAngle[2] = 135.0;							
+									else if(180.0 < fAngle[2] && fAngle[2] < 225.0)		fAngle[2] = 180.0;
+									else if(225.0 < fAngle[2] && fAngle[2] < 270.0)		fAngle[2] = 225.0;								
+									else if(270.0 < fAngle[2] && fAngle[2] < 315.0)		fAngle[2] = 270.0;
+									else if(315.0 < fAngle[2] && fAngle[2] < 360.0)		fAngle[2] = 315.0;	
+									AnglesNormalize(fAngle);							
+									
+									g_fGrabbingRotateDelay[client] = GetGameTime() + 0.05;
+								}
+							}
+							else
+							{
+								fAngle[2] += mouse[1] / (10/g_cvRotateSpeed.FloatValue);
+								AnglesNormalize(fAngle);									
+							}
+						}
+						
+						//Simulate Mouse wheel 					[3]
+						else if(buttons & IN_ATTACK3 && !(buttons & IN_RELOAD) && !(buttons & IN_ATTACK2) && !(buttons & IN_JUMP))
+						{
+							if (mouse[1] < 0) //Up
 							{
 								if(g_fGrabbingDistance[client] < 10000.0)
 									g_fGrabbingDistance[client] -= 2.0 * mouse[1];
 							}
-							else if (mouse[1] > 0) //Up Down
+							else if (mouse[1] > 0) //Down
 							{
 								if(g_fGrabbingDistance[client] > 150.0)
 								{
@@ -558,12 +618,43 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 								}
 							}
 						}
-						//Resize
-						else if(buttons & IN_ATTACK2)
+						//Freeze Entity (Only on prop_physics) 	[2]
+						else if(buttons & IN_ATTACK2 && !(buttons & IN_RELOAD) && !(buttons & IN_ATTACK3) && !(buttons & IN_JUMP))
+						{	
+							char szClass[64];
+							GetEdictClassname(entity, szClass, sizeof(szClass));
+							
+							if (StrEqual(szClass, "prop_physics") || StrEqual(szClass, "prop_ragdoll"))
+							{
+								if(g_fGrabbingAttack2Delay[client] <= GetGameTime())	
+								{
+									if(Phys_IsPhysicsObject(entity))
+									{
+										if(Phys_IsGravityEnabled(entity))
+										{													
+											Phys_EnableGravity(entity, false);
+											Phys_EnableMotion(entity, false);
+											Phys_Sleep(entity);
+											PrintHintText(client, "Prop freezed");
+										}
+										else 
+										{
+											Phys_EnableGravity(entity, true);
+											Phys_EnableMotion(entity, true);
+											Phys_Wake(entity);
+											PrintHintText(client, "Prop unfreezed");
+										}
+									}
+								}
+								g_fGrabbingAttack2Delay[client] = GetGameTime() + 0.5;								
+							}		
+						}
+						//Resize								[R][ Space ]
+						else if(buttons & IN_RELOAD && buttons & IN_JUMP && !(buttons & IN_ATTACK2) && !(buttons & IN_ATTACK3))
 						{
 							//Resize -------------------------------------------------------------------
 							char szClass[64];
-							GetEdictClassname(g_iGrabbingEntity[client][0], szClass, sizeof(szClass));
+							GetEdictClassname(entity, szClass, sizeof(szClass));
 							if (StrEqual(szClass, "prop_dynamic"))
 							{
 								fSize -= mouse[1]/100.0; //Up
@@ -578,7 +669,8 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 									if(fSize <= fMinSize)	fSize = fMinSize;		
 									if(fSize >= fMaxSize)	fSize = fMaxSize;
 								}
-								SetEntPropFloat(g_iGrabbingEntity[client][0], Prop_Send, "m_flModelScale", fSize);
+								SetEntPropFloat(entity, Prop_Send, "m_flModelScale", fSize);
+								//PhysicsGun_UpdateEntityHitbox(g_iGrabbingEntity[client][0]);
 							}	
 							//--------------------------------------------------------------------------
 						}
@@ -593,100 +685,72 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 							fNewEntityPosition[i] = fEndPosition[i] + g_fGrabbingDifference[client][i];
 	
 						AnglesNormalize(fAngle);
-						TeleportEntity(g_iGrabbingEntity[client][0], fNewEntityPosition, fAngle, NULL_VECTOR);
+						TeleportEntity(entity, fNewEntityPosition, fAngle, NULL_VECTOR);
 					}
 					else
-					{			
+					{		
+						//Remove fixed client angle						
 						if(GetEntityFlags(client) & FL_FROZEN)
 							SetEntityFlags(client, (GetEntityFlags(client) & ~FL_FROZEN));
 						
+						//Set Hint text
 						char szClass[32];
-						GetEdictClassname(g_iGrabbingEntity[client][0], szClass, sizeof(szClass));
+						GetEdictClassname(entity, szClass, sizeof(szClass));
 						char szName[32];
-						if(IsValidClient(g_iGrabbingEntity[client][0]))
+						if(IsValidClient(entity))
 						{
-							GetClientName(g_iGrabbingEntity[client][0], szName, sizeof(szName));
+							GetClientName(entity, szName, sizeof(szName));
 						}
 						else
 						{
-							GetEntPropString(g_iGrabbingEntity[client][0], Prop_Data, "m_iName", szName, sizeof(szName));
+							GetEntPropString(entity, Prop_Data, "m_iName", szName, sizeof(szName));
 						}
 						TrimString(szName);
 						if (strlen(szName) == 0)	szName = "---";
-						int iSkin = GetEntProp(g_iGrabbingEntity[client][0], Prop_Send, "m_nSkin");
+						//int iSkin = GetEntProp(entity, Prop_Send, "m_nSkin");
 						
 						if(g_fHintsDelay[client] <= GetGameTime() && !(buttons & IN_SCORE))
 						{
-							ShowSyncHudText(client, g_hHud, GRAB_HINTS, szClass, g_iGrabbingEntity[client][0], szName, iSkin);
+							ShowSyncHudText(client, g_hHud, GRAB_HINTS, szClass, entity, EntIndexToEntRef(entity),szName);
 							g_fHintsDelay[client] = GetGameTime() + 0.055;
 						}
 						
+						
 						GetClientAimPosition(client, g_fGrabbingDistance[client], fEndPosition, tracerayfilterrocket, client);
 					
+						float fNextPosition[3];
 						for (int i = 0; i <= 2; i++)
-							fEndPosition[i] = fEndPosition[i] + g_fGrabbingDifference[client][i];
+							fNextPosition[i] = fEndPosition[i] + g_fGrabbingDifference[client][i];
 						
 						float vector[3], fZero[3];
-						MakeVectorFromPoints(fAimPosition, fEndPosition, vector); //Set velocity
+						MakeVectorFromPoints(fAimPosition, fNextPosition, vector); //Set velocity
 						
-						if(StrEqual(szClass, "prop_physics") && Phys_IsGravityEnabled(g_iGrabbingEntity[client][0])) //Check is it prop_physics before Phys_IsGravityEnabled(
+						if((StrEqual(szClass, "prop_physics") || StrEqual(szClass, "prop_ragdoll")) && Phys_IsGravityEnabled(entity)) //Check is it prop_physics before Phys_IsGravityEnabled(
 						{
 							ScaleVector(vector, GetConVarFloat(g_cvForceEntity));
-							Phys_SetVelocity(EntRefToEntIndex(g_iGrabbingEntity[client][0]), vector, fZero, true);
-							Phys_Wake(g_iGrabbingEntity[client][0]);
+							Phys_SetVelocity(EntRefToEntIndex(entity), vector, fZero, true);
+							Phys_Wake(entity);
 						}	
-						else if(IsValidClient(g_iGrabbingEntity[client][0])) //Is entity client?
+						else if(IsValidClient(entity)) //Is entity client?
 						{
 							ScaleVector(vector, GetConVarFloat(g_cvForcePlayer));
-							TeleportEntity(g_iGrabbingEntity[client][0], NULL_VECTOR, NULL_VECTOR, vector);
+							TeleportEntity(entity, NULL_VECTOR, NULL_VECTOR, vector);
 						}
-						else TeleportEntity(g_iGrabbingEntity[client][0], fEndPosition, NULL_VECTOR, NULL_VECTOR);
+						else TeleportEntity(entity, fNextPosition, NULL_VECTOR, NULL_VECTOR);
 					}		
 					
-					//Hook T key
+					//Hook T key (Smart copy function)
 					if(impulse == 201)
 					{
 						if(g_fGrabbingCopyDelay[client] <= GetGameTime())
 						{
-							int iCopyIndex = PhysicsGun_CopyProp(client, g_iGrabbingEntity[client][0]);
-							if(iCopyIndex != g_iGrabbingEntity[client][0])
+							int iCopyIndex = PhysicsGun_CopyProp(client, entity);
+							if(iCopyIndex != entity)
 								SetEntityBindIndex(client, iCopyIndex);
 								
 							g_fGrabbingCopyDelay[client] = GetGameTime() + 1.5;
 						}
 						//else SendDialogToOne(client, 240, 248, 255, "Copy Function Cooling Down!");
-					}
-					
-					//Freeze Entity (Only on prop_physics)
-					if(buttons & IN_ATTACK2)
-					{	
-						char szClass[64];
-						GetEdictClassname(g_iGrabbingEntity[client][0], szClass, sizeof(szClass));
-						
-						if (StrEqual(szClass, "prop_physics"))
-						{
-							if(g_fGrabbingAttack2Delay[client] <= GetGameTime())	
-							{
-								if(Phys_IsPhysicsObject(g_iGrabbingEntity[client][0]))
-								{
-									if(Phys_IsGravityEnabled(g_iGrabbingEntity[client][0]))
-									{													
-										Phys_EnableGravity(g_iGrabbingEntity[client][0], false);
-										Phys_EnableMotion(g_iGrabbingEntity[client][0], false);
-										Phys_Sleep(g_iGrabbingEntity[client][0]);
-										PrintHintText(client, "Prop freezed");
-									}
-									else 
-									{
-										Phys_EnableGravity(g_iGrabbingEntity[client][0], true);
-										Phys_EnableMotion(g_iGrabbingEntity[client][0], true);
-										Phys_Wake(g_iGrabbingEntity[client][0]);
-										PrintHintText(client, "Prop unfreezed");
-									}
-								}
-							}
-							g_fGrabbingAttack2Delay[client] = GetGameTime() + 0.5;								
-						}		
 					}
 				}		
 				else 
@@ -698,10 +762,10 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			}
 			else 
 			{
-				if(IsValidEntity(g_iGrabbingEntity[client][0]))	
+				if(IsValidEntity(EntRefToEntIndex(g_iGrabbingEntity[client][0])))	
 				{
-					if (IsPropBuggedDoor(g_iGrabbingEntity[client][0]))
-						PhysicsGun_RespawnDoor(g_iGrabbingEntity[client][0]);
+					if (IsPropBuggedDoor(EntRefToEntIndex(g_iGrabbingEntity[client][0])))
+						PhysicsGun_RespawnDoor(EntRefToEntIndex(g_iGrabbingEntity[client][0]));
 						
 					EmitSoundToAll(SOUND_DROP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.8);	
 					g_iGrabbingEntity[client][0] = -1;
@@ -875,7 +939,7 @@ int PhysicsGun_RespawnDoor(int iEntity) //For reload bug door
 	return -1;
 }
  
-int PhysicsGun_CopyProp(int client, int iEntity) //For reload bug door
+int PhysicsGun_CopyProp(int client, int iEntity)
 {
 	//Get Value-----------
 	float fOrigin[3], fAngles[3], fSize;
@@ -904,7 +968,9 @@ int PhysicsGun_CopyProp(int client, int iEntity) //For reload bug door
 	}
 	else if(StrContains(szClass, "prop_") != -1)
 	{
-		iNewEntity = CreateEntityByName("prop_dynamic_override");
+		if(g_cvLessLag.BoolValue)	iNewEntity = CreateEntityByName("prop_dynamic_override");
+		else	iNewEntity = CreateEntityByName(szClass);
+		
 		if (iNewEntity > MaxClients && IsValidEntity(iNewEntity))
 		{
 			SetEntProp(iNewEntity, Prop_Send, "m_nSolidType", 6);
@@ -964,6 +1030,40 @@ void PhysicsGun_RotationCalculation_NewGrabbingDifference(float fGrabbingDiffere
 	outfNewDifferece[1] = B3;
 	outfNewDifferece[2] = C3;
 } 
+
+//Not working help me
+bool PhysicsGun_UpdateEntityHitbox(int iEntity)
+{
+	char szModel[64];
+	GetEntPropString(iEntity, Prop_Data, "m_ModelName", szModel, sizeof(szModel));
+
+	//Create a dummy entity to get entity origial collison Min Max
+	float fEntityMin[3], fEntityMax[3];
+	int iDummyEntity = CreateEntityByName("prop_dynamic_override");
+	if (iDummyEntity > MaxClients && IsValidEntity(iDummyEntity))
+	{
+		if (!IsModelPrecached(szModel))	PrecacheModel(szModel);
+		DispatchKeyValue(iDummyEntity, "model", szModel);
+		DispatchSpawn(iDummyEntity);
+		GetEntPropVector(iDummyEntity, Prop_Send, "m_vecSpecifiedSurroundingMins", fEntityMin);
+		GetEntPropVector(iDummyEntity, Prop_Send, "m_vecSpecifiedSurroundingMaxs", fEntityMax);
+		AcceptEntityInput(iDummyEntity, "Kill");
+	}
+	else	return false;
+	
+	float fModelScale = GetEntPropFloat(iEntity, Prop_Send, "m_flModelScale");
+		
+	ScaleVector(fEntityMin, fModelScale);
+	ScaleVector(fEntityMax, fModelScale);
+	
+	SetEntPropVector(iEntity, Prop_Send, "m_vecSpecifiedSurroundingMins", fEntityMin);
+	SetEntPropVector(iEntity, Prop_Send, "m_vecSpecifiedSurroundingMaxs", fEntityMax);
+	
+	PrintCenterTextAll("%f %f %f   %f %f %f", fEntityMin[0], fEntityMin[1], fEntityMin[2], fEntityMax[0], fEntityMax[1], fEntityMax[2]);
+	return true;
+}
+
+ 
  
 /*
 int SpawnVehicle(int client)
@@ -1060,13 +1160,15 @@ public void OnPluginEnd()
 
 void SetEntityBindIndex(int client, int iEntity)
 {
-	for (int i = 1; i <= 3; i++)
-		if(IsValidEntity(g_iGrabbingEntity[client][i]))	AcceptEntityInput(g_iGrabbingEntity[client][i], "Kill");
+	for (int i = 1; i <= 2; i++)
+	{
+		if(IsValidEntity(EntRefToEntIndex(g_iGrabbingEntity[client][i])))	AcceptEntityInput(EntRefToEntIndex(g_iGrabbingEntity[client][i]), "Kill");
+	}
 	//AttachControlPointParticle(client, PARTICLE, g_iGrabbingEntity[client][0]);		
 	
 	//Set Entity Outline
 	if(!HasGlow(iEntity))
-		g_iGrabbingEntity[client][1] = CreateGlow(iEntity);
+		g_iGrabbingEntity[client][1] = EntIndexToEntRef(CreateGlow(iEntity));
 		
 	//Save the Entity Distance
 	g_fGrabbingDistance[client] = GetEntitiesDistance(client, iEntity);
@@ -1080,8 +1182,11 @@ void SetEntityBindIndex(int client, int iEntity)
 	
 	EmitSoundToAll(SOUND_PICKUP, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.8);
 	
+	char szClass[32];
+	GetEntityClassname(iEntity, szClass, sizeof(szClass));
+	
 	//Bind Entity
-	g_iGrabbingEntity[client][0] = iEntity;
+	g_iGrabbingEntity[client][0] = EntIndexToEntRef(iEntity);
 }
 
 void SetEntityGlows(int client, int iEntity, float fPointPosition[3]) //Set the Glow and laser
@@ -1322,15 +1427,15 @@ stock bool GetPointAimPosition(float cleyepos[3], float cleyeangle[3], float max
 
 void ResetClientAttribute(int client)
 {
-	if(IsValidEntity(g_iGrabbingEntity[client][0]))	
+	if(IsValidEntity(EntRefToEntIndex(g_iGrabbingEntity[client][0])))	
 	{
 		g_iGrabbingEntity[client][0] = -1;
 	}
-	for (int i = 1; i <= 3; i++) 
+	for (int i = 1; i <= 2; i++) 
 	{
-		if(IsValidEntity(g_iGrabbingEntity[client][i]))	
+		if(IsValidEntity(EntRefToEntIndex(g_iGrabbingEntity[client][i])))	
 		{
-			AcceptEntityInput(g_iGrabbingEntity[client][i], "Kill");
+			AcceptEntityInput(EntRefToEntIndex(g_iGrabbingEntity[client][i]), "Kill");
 			g_iGrabbingEntity[client][i] = -1;
 		}
 	}
@@ -1440,6 +1545,8 @@ void AnglesNormalize(float vAngles[3])
 	while (vAngles[0] < -89.0)vAngles[0] += 360.0;
 	while (vAngles[1] > 180.0)vAngles[1] -= 360.0;
 	while (vAngles[1] < -180.0)vAngles[1] += 360.0;
+	while (vAngles[2] < -0.0)vAngles[2] += 360.0;
+	while (vAngles[2] >= 360.0)vAngles[2] -= 360.0;
 }
 
 void SendDialogToOne(int client, int red, int green, int blue, const char[] text, any ...)
