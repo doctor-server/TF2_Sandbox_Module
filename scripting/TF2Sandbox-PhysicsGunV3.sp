@@ -122,6 +122,9 @@ float g_fGrabbingLaserDelay[MAXPLAYERS + 1];
 float g_fGrabbingCopyDelay[MAXPLAYERS + 1];
 float g_fHintsDelay[MAXPLAYERS + 1];
 
+//Fix the compatibility on physgun v3 and v4
+bool g_bIN_ATTACK[MAXPLAYERS + 1];
+
 public void OnPluginStart()
 {
 	CreateConVar("sm_tf2sb_pg_version", PLUGIN_VERSION, "", FCVAR_SPONLY | FCVAR_NOTIFY);
@@ -370,6 +373,16 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		
 	if(IsPlayerAlive(client))
 	{
+		//Fix the compatibility on physgun v3 and v4
+		if(buttons & IN_ATTACK)	
+		{
+			g_bIN_ATTACK[client] = true;
+		}
+		else
+		{
+			g_bIN_ATTACK[client] = false;
+		}
+		
 		//GetAimEntity
 		int iEntity = GetClientAimEntity(client);
 		if(IsGameSandbox() && IsPropBuggedDoor(iEntity)) //Show info of Bugged Door
@@ -1440,7 +1453,7 @@ void ResetClientAttribute(int client)
 		}
 	}
 	
-	if(GetEntityFlags(client) & FL_FROZEN)
+	if(GetEntityFlags(client) & FL_FROZEN && !g_bIN_ATTACK[client])
 	{
 		SetEntityFlags(client, (GetEntityFlags(client) & ~FL_FROZEN));
 	}
