@@ -23,13 +23,14 @@
 3.0 - Add Hints + Add sound effect
 3.2 - Edit the Hints + add rotate Z axis + apply force on prop_ragdoll + more particle effects
 	  Removed Size display in hint to prevent server crash
+3.3 - Fix OnClientDisconnect stack errors
 */
 #pragma semicolon 1
 
 #define DEBUG
 
 #define PLUGIN_AUTHOR "BattlefieldDuck"
-#define PLUGIN_VERSION "3.2"
+#define PLUGIN_VERSION "3.3"
 
 #include <sourcemod>
 #include <sdktools>
@@ -251,7 +252,20 @@ public void OnClientPutInServer(int client)
 
 public void OnClientDisconnect(int client)
 {
-	ResetClientAttribute(client);
+	if(IsValidEntity(EntRefToEntIndex(g_iGrabbingEntity[client][0])))	
+	{
+		g_iGrabbingEntity[client][0] = -1;
+	}
+	
+	for (int i = 1; i <= 2; i++) 
+	{
+		if(IsValidEntity(EntRefToEntIndex(g_iGrabbingEntity[client][i])))	
+		{
+			AcceptEntityInput(EntRefToEntIndex(g_iGrabbingEntity[client][i]), "Kill");
+			g_iGrabbingEntity[client][i] = -1;
+		}
+	}
+
 	g_iGrabbingEntity[client][0] = -1; //Grab entity
 	g_iGrabbingEntity[client][1] = -1; //tf_glow
 	g_iGrabbingEntity[client][2] = -1;
